@@ -8,7 +8,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 |---|------|------|
 | 1 | JSX & 함수 컴포넌트 | ✅ 완료 |
 | 2 | Props로 데이터 전달 | ✅ 완료 |
-| 3 | State (`useState`) | ⬜ 예정 |
+| 3 | State (`useState`) | ✅ 완료 |
 | 4 | 이벤트 핸들링 | ⬜ 예정 |
 | 5 | 조건부 렌더링 & 리스트 렌더링 | ⬜ 예정 |
 | 6 | `useEffect`와 부수효과 | ⬜ 예정 |
@@ -259,3 +259,45 @@ function Badge({ label }: BadgeProps) {
 **실습 내용:** `App`이 `name`/`intro`/`stack` props를 `<Profile />`에 내려주도록 바꾸고, `Profile`은 `ProfileProps` interface를 정의해 구조분해 할당으로 받아 렌더링하도록 리팩터링.
 
 **메모:** props 타입이 안 맞으면 (`Profile`이 아직 인자를 안 받는데 `App`이 값을 넘기는 경우 등) 런타임이 아니라 컴파일 시점에 `IntrinsicAttributes` 타입 에러로 바로 잡힌다 — 컴파일 시점에 "부모-자식 간 데이터 계약"을 검증해주는 셈.
+
+---
+
+## 3단계: State (`useState`)
+
+**실습 파일:** `src/components/Profile.tsx`
+
+**배운 개념:**
+
+**1) Props vs State**
+Props는 부모가 내려주는 읽기 전용 값이라 컴포넌트 스스로는 못 바꾼다. 하지만 "버튼을 누르면 숫자가 올라간다"처럼 **컴포넌트 자신이 시간에 따라 바꿔야 하는 값**이 필요할 때가 있는데, 이걸 위한 게 State다.
+
+**2) `useState`는 "리렌더링을 유발하는 변수"**
+그냥 `let count = 0`을 쓰면 값은 바뀌어도 화면이 다시 그려지지 않는다. `useState`로 관리하는 값은 바뀔 때마다 React에게 "다시 렌더링해줘"라고 알린다.
+
+```tsx
+import { useState } from 'react';
+
+function Counter() {
+  const [count, setCount] = useState(0);  // [현재값, 값을 바꾸는 함수] = useState(초기값)
+
+  return (
+    <button onClick={() => setCount(count + 1)}>
+      클릭 횟수: {count}
+    </button>
+  );
+}
+```
+- `useState(0)`은 배열 `[현재값, setter함수]`를 반환한다 — 구조분해 할당으로 이름을 원하는 대로 짓는다.
+- `setCount(...)`를 호출하면 React가 그 값을 기억해뒀다가 컴포넌트를 다시 실행(리렌더링)해서 새 값으로 화면을 갱신한다.
+
+**3) Hook 규칙 (Rules of Hooks)**
+`useState` 같은 Hook은 반드시 컴포넌트 함수 **최상위**에서만 호출해야 한다 (`if`/`for`/중첩 함수 안에서 호출 금지). 이 프로젝트의 `.oxlintrc.json`에도 `react/rules-of-hooks`가 error로 켜져 있어 어기면 바로 린트 에러가 뜬다.
+
+**4) 함수형 업데이트 (`setState(prev => ...)`)**
+`setLikes(likes + 1)`처럼 "현재 렌더링 시점의 값 + 1"을 계산해서 넘기는 방식은 대부분 잘 동작하지만, 같은 렌더링 안에서 `setLikes`를 연달아 여러 번 호출하면 `likes`가 그 순간엔 아직 안 바뀐 옛날 값이라 의도한 만큼 안 올라가는 함정이 있다.
+```tsx
+setLikes(prev => prev + 1);  // 이전 값을 받아서 다음 값을 계산 — 항상 최신값 기준
+```
+클릭 한 번에 setter를 한 번만 호출하는 경우엔 차이가 없지만, 실무에서는 안전하게 함수형 업데이트를 기본으로 쓰는 편.
+
+**실습 내용:** `Profile`에 "좋아요" 버튼을 추가. `useState(0)`으로 `likes` 상태를 만들고, `onClick`으로 `setLikes(likes + 1)`을 호출해 클릭할 때마다 화면의 숫자가 올라가는 걸 확인.
