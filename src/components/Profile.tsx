@@ -1,17 +1,16 @@
-function Profile() {
-  // TODO(human): 이름, 한줄소개, 기술스택을 렌더링하는 JSX를 반환하세요.
-  const myProfile = {
-    name: "ㅇㅈㅇ",
-    intro: "Hello World",
-    stack: ["node", "react", "typescript"]
-  };
-
+// TODO(human): ProfileProps 인터페이스를 정의하고, Profile이 props를 받아 사용하도록 고치세요.
+interface ProfileProps {
+    name: string;
+    intro: string;
+    stack: string[];
+}
+function Profile({name, intro, stack}: ProfileProps) {
   return (
-  <>
-    <div>이름: {myProfile.name}</div>
-    <div>{myProfile.intro}</div>
-    <div>기술 스택: <ul>{myProfile.stack.map((skill) => (<li key={skill}>{skill}</li>))}</ul></div>
-  </>
+    <>
+      <div>{name}</div>
+      <div>{intro}</div>
+      <div>기술 스택: <ul>{stack.map((skill) => (<li key={skill}>{skill}</li>))}</ul></div>
+    </>
   )
 }
 
