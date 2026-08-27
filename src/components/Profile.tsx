@@ -1,20 +1,18 @@
-// TODO(human): Profile 컴포넌트를 작성하세요.
-function Profile(){
-    const ulStyle = {
-        margin: 0,
-        padding: 0
-    }
-    return (
-        <div className="profileDetail">
-            <div>이름: 임씨</div>
-            <div>한줄 소개: Hello World!</div>
-            <ul style={ulStyle}>
-                <li>backend: node, typescript</li>
-                <li>frontend: react</li>
-                <li>devOps: github</li>
-            </ul>
-        </div>
-    )
+function Profile() {
+  // TODO(human): 이름, 한줄소개, 기술스택을 렌더링하는 JSX를 반환하세요.
+  const myProfile = {
+    name: "ㅇㅈㅇ",
+    intro: "Hello World",
+    stack: ["node", "react", "typescript"]
+  };
+
+  return (
+  <>
+    <div>이름: {myProfile.name}</div>
+    <div>{myProfile.intro}</div>
+    <div>기술 스택: <ul>{myProfile.stack.map((skill) => (<li key={skill}>{skill}</li>))}</ul></div>
+  </>
+  )
 }
 
 export default Profile;
