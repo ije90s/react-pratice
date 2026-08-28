@@ -9,7 +9,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 1 | JSX & 함수 컴포넌트 | ✅ 완료 |
 | 2 | Props로 데이터 전달 | ✅ 완료 |
 | 3 | State (`useState`) | ✅ 완료 |
-| 4 | 이벤트 핸들링 | ⬜ 예정 |
+| 4 | 이벤트 핸들링 | ✅ 완료 |
 | 5 | 조건부 렌더링 & 리스트 렌더링 | ⬜ 예정 |
 | 6 | `useEffect`와 부수효과 | ⬜ 예정 |
 | 7 | Form 다루기 | ⬜ 예정 |
@@ -328,4 +328,79 @@ function Profile() {
 
 **Hook 규칙이 있는 이유** — React는 매 렌더링마다 Hook들을 **항상 같은 순서로** 호출한다고 가정하고 내부적으로 값을 순서(인덱스)로 추적한다. `if`/반복문 안에서 조건부로 호출하면 그 순서가 흐트러져서 어떤 State가 어떤 값인지 추적이 꼬인다 — 그래서 최상위에서만 호출해야 함.
 
+**6) Hook 순서 추적 vs 가상 DOM diffing — 서로 다른 매커니즘**
+Hook 순서 보장이 "가상 DOM에서 뭐가 바뀌었는지 파악하기 위한 것"이라고 오해하기 쉬운데, 사실 완전히 다른 두 시스템이다.
+
+React는 컴포넌트마다 Hook 값들을 **연결 리스트(linked list)**로 저장하고, 각 Hook을 이름이 아니라 **호출된 순서(인덱스)**로 구분한다.
+```tsx
+function Profile() {
+  const [likes, setLikes] = useState(0);   // 1번째 Hook
+  const [name, setName] = useState("");     // 2번째 Hook
+}
+// 내부 저장 형태 (개념적으로): [ {value: 0}, {value: ""} ]
+//                                 ↑ 1번째        ↑ 2번째
+```
+`useState`를 호출하면 React는 "몇 번째 Hook 호출이냐"만 보고 리스트에서 맞는 자리를 찾아 값을 돌려준다 — **변수명이 아니라 순서로 매칭**. 그래서 조건부로 Hook을 호출하면(`if (likes > 0) { useState(...) }`) 렌더링마다 몇 번째 자리에 어떤 값이 들어있는지가 뒤바뀌어서 추적이 꼬인다. 이건 순수하게 "한 컴포넌트의 State/Effect 값을 어디서 꺼내올지"의 문제다.
+
+반면 **가상 DOM diffing(reconciliation)**은 `Profile()`이 반환한 **JSX 엘리먼트 트리**를 이전 트리와 비교해서 화면의 어느 부분이 바뀌었는지 찾는 별개의 작업이다. `useState` 호출 순서가 아니라 `<div>`, `<button>` 같은 엘리먼트 타입과 `key`로 매칭한다.
+
+| | 관리 대상 | 매칭 기준 |
+|---|---|---|
+| Hook 순서 | 컴포넌트 하나의 State/Effect 값들 | 호출 순서(인덱스) |
+| 가상 DOM diffing | 렌더링된 엘리먼트 트리 전체 | 엘리먼트 타입 + `key` |
+
+Hook 순서가 흐트러지면 diffing이 잘못되는 게 아니라, 애초에 `likes` 같은 값 자체를 잘못된 자리에서 읽어와버린다 — 화면에 엉뚱한 값이 찍히거나 `Rendered fewer hooks than expected` 같은 런타임 에러가 나는 이유. 리스트 렌더링의 `key`도 "이 항목이 이전 렌더링의 어떤 항목과 같은 놈인지" 식별하는 용도이지만, 이는 diffing 쪽 매칭 문제라 Hook 순서 문제와는 원리가 다르다 (5단계에서 다시 다룰 주제).
+
 **실습 내용:** `Profile`에 "좋아요" 버튼을 추가. `useState(0)`으로 `likes` 상태를 만들고, `onClick`으로 `setLikes(likes + 1)`을 호출해 클릭할 때마다 화면의 숫자가 올라가는 걸 확인.
+
+---
+
+## 4단계: 이벤트 핸들링
+
+**실습 파일:** `src/components/Profile.tsx`
+
+**배운 개념:**
+
+**1) 제어 컴포넌트(controlled input)**
+`<input value={state값} onChange={...} />`처럼 입력창의 표시값을 React State가 소유하도록 만드는 패턴. 일반 HTML `<input>`은 브라우저가 알아서 자기 값을 들고 있지만, `value` prop을 지정하는 순간 input은 "내가 뭘 보여줄지" 결정할 권한을 잃고 오직 그 값만 표시한다.
+
+타이핑 한 글자마다 실제로 일어나는 일:
+```
+① onChange 이벤트 발생 → e.target.value에 새 글자 포함된 값이 담김
+② setComment(e.target.value) 호출 → comment state 갱신
+③ React가 컴포넌트 리렌더링
+④ <input value={comment} />가 새 값으로 다시 그려짐
+⑤ 화면에 반영
+```
+"타이핑하니까 보인다"가 아니라 "state가 바뀌고 → 리렌더링되고 → 그 결과로 input이 새 값을 표시하도록 다시 그려진다"가 정확한 표현. 만약 `onChange`에서 `setComment`를 호출하지 않으면, `value`가 매 렌더링마다 이전 state로 고정돼있어서 **타이핑 자체가 안 먹히는 input**이 된다.
+
+```tsx
+const [comment, setComment] = useState("");
+
+<input value={comment} onChange={(e) => setComment(e.target.value)} />
+```
+
+**2) SyntheticEvent와 `preventDefault`**
+React가 핸들러에 넘겨주는 이벤트 객체(`e`)는 브라우저 네이티브 이벤트가 아니라 **SyntheticEvent** — 브라우저마다 다른 이벤트 API를 통일된 인터페이스로 감싼 래퍼. `preventDefault()`, `target` 등은 네이티브와 동일하게 동작.
+
+`<form>`의 기본 동작은 제출 시 `action` 속성(없으면 현재 URL)으로 HTTP 요청을 보내고 **문서 전체를 새로 로드**하는 것 — URL이 안 바뀌어도 브라우저 입장에선 "기존 문서를 버리고 새로 로드"하는 내비게이션이다. SPA(Single Page Application)는 최초 1회만 HTML/JS를 받고 그 이후엔 React가 메모리에서 DOM을 직접 patching하는 방식으로 새로고침 없이 화면을 갱신하는데, form의 기본 제출 동작이 일어나면 그 순간 메모리에 있던 모든 React state(지금까지의 `likes`, `comment` 등)가 통째로 사라지고 앱이 처음부터 재마운트된다. 그래서 `onSubmit` 핸들러 안에서 `e.preventDefault()`로 이 기본 동작을 막는다.
+
+```tsx
+function handleCommentSubmit(e: FormEvent<HTMLFormElement>) {
+  e.preventDefault();       // form의 기본 제출(=페이지 새로고침) 막기
+  setSubmittedComment(comment);
+}
+```
+
+"브라우저 기본 동작"은 폼 제출에 국한된 개념이 아니라, 브라우저가 특정 이벤트에 대해 자동으로 처리하는 모든 행동을 가리키는 일반 용어다 (`<a href>` 클릭 시 이동, 우클릭 시 컨텍스트 메뉴, 체크박스 클릭 시 토글 등). 반대로 `<button type="button">`처럼 막을 기본 동작 자체가 없는 경우엔 `preventDefault`가 필요 없다.
+
+**3) (곁가지) `preventDefault`로 새로고침을 막으면 메모리가 계속 쌓이지 않나?**
+State 값을 `setX(새값)`으로 교체할 때, 더 이상 참조되지 않는 이전 값은 자바스크립트의 **가비지 컬렉터(GC)**가 자동으로 회수한다 — 새로고침 없이 오래 켜둔다고 그 자체로 메모리가 쌓이는 건 아니다. 진짜 메모리 누수는 "계속 커지기만 하고 안 지워지는 것들" 때문에 생긴다: 끝없이 자라는 배열, 정리 안 된 `setInterval`/이벤트 리스너, 해제 안 된 구독 등. 이런 정리(cleanup) 로직을 어디서 작성하는지가 6단계 `useEffect`의 핵심 주제 — `useEffect`가 반환하는 정리 함수를 React가 컴포넌트 소멸 시점(혹은 effect 재실행 직전)에 자동 호출해준다.
+
+**실습 내용:** `Profile`에 댓글 입력 폼 추가. `comment` state로 입력창을 제어 컴포넌트로 만들고, `handleCommentSubmit`에서 `e.preventDefault()`로 새로고침을 막은 뒤 `setSubmittedComment(comment)`로 제출된 값을 별도 state에 반영해 화면에 표시.
+
+**흔한 실수 (직접 겪음):**
+- `submittedComment = ...`처럼 state를 직접 대입 — `const [submittedComment, setSubmittedComment] = useState(...)`의 `submittedComment`는 `const`라서 재할당이 컴파일 에러(`TS2588`). state는 반드시 setter 함수로만 바꿔야 함.
+- `e.target.value`로 값을 읽으려 한 것 — `onChange`의 `e.target`은 그 input 자신이지만, `onSubmit`의 `e.target`은 **폼 전체**를 가리켜서 `.value`라는 속성 자체가 없음(`TS2339`). 필요한 값은 이미 `comment` state에 들어있으므로 그걸 그대로 쓰면 됨.
+- `() => setSubmittedComment(comment)`처럼 화살표 함수로 감싸버린 것 — `onChange={(e) => ...}`처럼 "나중에 이벤트 발생 시 실행할 함수"를 React에 넘겨줄 때와 달리, 함수 몸통 안에서는 이미 실행되는 중이므로 화살표 함수로 감싸면 함수를 만들기만 하고 호출은 안 해서 아무 동작도 안 함 (컴파일 에러 없이 조용히 무효화되는 버그라 발견하기 까다로움).
+- `setSubmittedComment(submittedComment)`처럼 엉뚱한 변수를 넘긴 것 — "방금 입력된 값"은 `submittedComment`가 아니라 `comment`에 들어있는데 변수명이 비슷해서 헷갈리기 쉬움.
