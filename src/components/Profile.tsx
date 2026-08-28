@@ -9,11 +9,11 @@ interface ProfileProps {
 function Profile({ name, intro, stack }: ProfileProps) {
   const [likes, setLikes] = useState(0);
   const [comment, setComment] = useState("");
-  const [submittedComment, setSubmittedComment] = useState("");
+  const [comments, setComments] = useState<string[]>([]);
 
   function handleCommentSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setSubmittedComment(comment);
+    setComments([...comments, comment]);
   }
 
   return (
@@ -31,7 +31,11 @@ function Profile({ name, intro, stack }: ProfileProps) {
         />
         <button type="submit">등록</button>
       </form>
-      {submittedComment && <div>남긴 말: {submittedComment}</div>}
+      {comments.length === 0 ? (
+        <div>아직 댓글이 없어요</div>
+      ) : (
+        <ul>{comments.map((item, index) => (<li key={index}>{item}</li>))}</ul>
+      )}
     </>
   )
 }
