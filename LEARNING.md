@@ -12,7 +12,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 4 | 이벤트 핸들링 | ✅ 완료 |
 | 5 | 조건부 렌더링 & 리스트 렌더링 | ✅ 완료 |
 | 6 | `useEffect`와 부수효과 | ✅ 완료 |
-| 7 | Form 다루기 | ⬜ 예정 |
+| 7 | Form 다루기 | ✅ 완료 |
 | 8 | 컴포넌트 합성 & 커스텀 훅 | ⬜ 예정 |
 
 ---
@@ -522,3 +522,64 @@ useEffect(() => {
 **흔한 실수 (직접 겪음):**
 - `setTimeout`과 `clearTimeout`의 시그니처를 혼동 — `clearTimeout(() => setShowSaved(false), 3000)`처럼 `setTimeout`의 형태(콜백+지연시간)를 `clearTimeout`에 그대로 써버림. `clearTimeout`은 타이머 ID 1개만 받는 "취소" 함수라 컴파일 에러(`TS2554: Expected 1 arguments, but got 2`)로 바로 드러났다. 게다가 이 상태로는 애초에 `setTimeout` 호출 자체가 없어서 `showSaved`를 되돌릴 예약이 걸리지도 않았음.
 - 마운트 가드를 `comments.length > 0 && setShowSaved(true);`처럼 JSX 밖(statement 자리)에서 `&&`로 작성 — 동작은 하지만 oxlint가 `no-unused-expressions` 경고를 냄. JSX `{}` 안에서는 `&&`가 "렌더링할 값"으로 평가되는 표현식이라 자연스럽지만, statement 자리에서 조건부 실행이 목적이라면 `if (comments.length === 0) return;`처럼 `if`를 쓰는 게 정석 — 1단계 규칙 ⑤("JSX `{}` 안엔 표현식만")의 반대 케이스로, "표현식 자리가 아닌 곳에 표현식만 써도 문제"라는 걸 보여준 사례.
+
+---
+
+## 7단계: Form 다루기
+
+**실습 파일:** `src/components/Profile.tsx`
+
+**배운 개념:**
+
+**1) 여러 input을 하나의 state 객체로 관리하기**
+4단계에서는 input 하나(`comment`)마다 `useState`를 하나씩 따로 뒀다. input이 여러 개로 늘어나면 그 방식은 `useState`와 전용 핸들러가 계속 늘어나는 구조가 된다. 대신 폼 전체를 **객체 하나**로 묶고, 각 input에 HTML 표준 속성인 `name`을 지정하면 핸들러 함수 하나가 모든 input을 처리할 수 있다.
+
+```tsx
+interface CommentFormState {
+  author: string;
+  text: string;
+}
+
+const [form, setForm] = useState<CommentFormState>({ author: "", text: "" });
+
+<input name="author" value={form.author} onChange={handleFormChange} />
+<input name="text" value={form.text} onChange={handleFormChange} />
+```
+
+**2) 하나의 핸들러가 여러 필드를 처리하는 법 — computed property name**
+핸들러가 어느 input에서 호출됐는지는 `e.target.name`(문자열 하나)으로 알 수 있다. 여기서 핵심은 **필드 이름별로 분기(`if`)하지 않는 것** — `if (e.target.name === "author") { ... }`처럼 나누면 필드가 늘어날 때마다 분기도 늘어나고, 새 필드를 처리하는 걸 깜빡하기 쉽다. 대신 객체 리터럴의 **computed property name**(`{ [변수]: 값 }`) 문법으로 필드 이름이 뭐든 상관없이 동일한 코드로 처리한다.
+
+```tsx
+function handleFormChange(e: ChangeEvent<HTMLInputElement>) {
+  const obj = { [e.target.name]: e.target.value };
+  setForm({ ...form, ...obj });
+}
+```
+- `{ [e.target.name]: e.target.value }` — `e.target.name`이 평가된 **값**("author" 또는 "text")을 키로 사용. `[]` 없이 `{ e.target.name: ... }`이라 쓰면 JS가 `e.target.name`이라는 글자 그대로를 키로 해석하려다 문법 에러가 난다.
+- `{ ...form, ...obj }` — 3단계에서 배운 대로 state는 직접 변형하면 안 되므로, 기존 `form`을 스프레드로 복사한 뒤 바뀐 필드만 덮어쓴 **새 객체**를 만들어 `setForm`에 넘긴다.
+
+**3) 스프레드는 "펼치는 위치"에 따라 의미가 다르다**
+```tsx
+setForm(...form, obj);        // ❌ 함수 호출 인자 자리 — form을 "여러 인자"로 펼치려는 시도인데, 객체는 인자 목록으로 못 폄
+setForm({ ...form, ...obj }); // ✅ 객체 리터럴 `{}` 안 — 객체의 속성들을 병합
+```
+배열/함수 인자 목록에서의 스프레드(여러 값으로 펼치기)와 객체 리터럴 안에서의 스프레드(속성 병합)는 문법은 비슷해 보여도 완전히 다른 자리에서, 다른 걸 하는 연산이다.
+
+**4) 기본적인 폼 검증과 리셋**
+```tsx
+function handleCommentSubmit(e: FormEvent<HTMLFormElement>) {
+  e.preventDefault();
+  if (!form.author.trim() || !form.text.trim()) return;
+  setComments([...comments, `${form.author}: ${form.text}`]);
+  setForm({ author: "", text: "" });
+}
+```
+`disabled={!form.author.trim() || !form.text.trim()}`로 두 필드가 비어있으면 제출 버튼 자체를 비활성화하고, `handleCommentSubmit` 안에서도 한 번 더 같은 조건을 검사한다(버튼이 비활성화돼도 `Enter` 키로 제출을 시도할 수 있으므로 이중 방어). 제출 성공 시 `setForm({ author: "", text: "" })`으로 폼을 초기 상태로 되돌린다.
+
+**실습 내용:** 댓글 폼을 "작성자 이름 + 한마디" 두 필드로 확장. `form` state를 `{ author, text }` 객체로 바꾸고, 두 input이 `name` 속성과 `handleFormChange` 핸들러 하나를 공유하도록 구현 (`TODO(human)`). 제출 시 두 필드 모두 비어있지 않은지 검증한 뒤 `"${author}: ${text}"` 형태로 댓글 목록에 추가하고 폼을 초기화.
+
+**흔한 실수 (직접 겪음) — computed property를 체화하기까지 3번의 시도:**
+- **1차 시도:** `for (let key of e.target.name)`처럼 반복문을 씀 — `e.target.name`은 `"author"` 같은 문자열 하나일 뿐인데 이걸 순회 대상으로 착각. 이 핸들러는 input 하나당 1번씩 호출되므로 애초에 "여러 필드를 한 번에 순회"할 필요가 없다는 걸 놓친 경우. 같은 시도에서 `newForm.add(...)`도 씀 — `.add()`는 `Set`/`Map`의 메서드고 일반 객체엔 없음.
+- **2차 시도:** `if (e.target.name.match("auther"))`처럼 특정 필드 이름으로 분기 — 오타(`auther`)는 둘째치고, 이렇게 분기하면 조건에 안 걸리는 다른 필드(`text`)는 아예 처리가 안 돼서 "하나의 핸들러로 모든 필드 처리"라는 애초의 목적이 깨짐.
+- **공통 문법 실수:** `{ e.target.name: e.target.value }`처럼 대괄호 없이 변수를 객체 키로 사용 — computed property name(`{ [expr]: value }`)의 `[]`를 빠뜨리면 파서가 `e.target.name`을 리터럴 키로 해석하려다 실패.
+- **최종적으로 해결한 형태:** 분기 없이 `{ [e.target.name]: e.target.value }`로 통일하고, `setForm({ ...form, ...obj })`로 병합.
