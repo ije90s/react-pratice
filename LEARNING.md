@@ -11,7 +11,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 3 | State (`useState`) | ✅ 완료 |
 | 4 | 이벤트 핸들링 | ✅ 완료 |
 | 5 | 조건부 렌더링 & 리스트 렌더링 | ✅ 완료 |
-| 6 | `useEffect`와 부수효과 | ⬜ 예정 |
+| 6 | `useEffect`와 부수효과 | ✅ 완료 |
 | 7 | Form 다루기 | ⬜ 예정 |
 | 8 | 컴포넌트 합성 & 커스텀 훅 | ⬜ 예정 |
 
@@ -437,3 +437,88 @@ const count = 0;
 **실습 내용:** `comments` state를 문자열 배열로 바꾸고, 폼 제출마다 `setComments([...comments, comment])`로 배열 끝에 추가. 화면에는 `comments.length === 0`일 때 안내 문구, 아닐 때 `.map()`으로 `<li>` 목록을 조건부+리스트 렌더링 조합으로 표시.
 
 **흔한 실수 (직접 겪음):** `<ul>comments.map(...)</ul>`처럼 `{}` 없이 JSX 자식 자리에 JS 표현식을 그냥 텍스트로 써버림 — 1단계 규칙 ⑤("JSX `{}` 안에는 표현식만")을 다시 확인시켜준 사례. `{}`로 감싸지 않으면 TS/React가 이를 JS 코드가 아니라 그냥 문자로 해석하려다 `item`, `index` 같은 변수를 못 찾는 에러가 남.
+
+---
+
+## 6단계: `useEffect`와 부수효과
+
+**실습 파일:** `src/components/Profile.tsx`
+
+**배운 개념:**
+
+**1) 부수효과(side effect)란 — "렌더링"과 분리해야 하는 것**
+컴포넌트 함수는 기본적으로 **props/state(입력)를 받아 JSX(출력)를 계산하는 순수 함수**여야 한다. 하지만 `document.title` 변경, `fetch`, `setTimeout`, 이벤트 리스너 등록, 구독처럼 **컴포넌트 함수 바깥 세상과 상호작용하는 처리**들이 실무에선 필요한데, 이걸 부수효과라 부른다. 렌더링 함수 본문에 직접 쓰면 "같은 입력엔 같은 출력, 여러 번 호출해도 안전"이라는 순수성 가정이 깨지므로, `useEffect`로 명시적으로 분리한다.
+
+```tsx
+useEffect(() => {
+  document.title = likes > 0 ? `${name} (좋아요 ${likes})` : name;
+}, [likes, name]);
+```
+
+**2) 실행 타이밍 — 렌더링 → 화면 반영(commit) → 그 다음에 effect**
+`useEffect`에 넘긴 함수는 렌더링 도중이 아니라, React가 계산한 결과를 **실제 브라우저 DOM에 반영한 뒤**에 실행된다. 그래서 effect 안에서는 이미 갱신된 실제 DOM을 안전하게 다룰 수 있다.
+
+**3) 의존성 배열(두 번째 인자) — 실행 빈도 제어**
+```tsx
+useEffect(() => { ... });          // 매 렌더링마다 실행
+useEffect(() => { ... }, []);      // 최초 마운트 시 1번만 실행
+useEffect(() => { ... }, [a, b]);  // a 또는 b가 이전 렌더링과 다를 때만 실행
+```
+- 배열엔 **effect 본문에서 실제로 읽는 값**(state, props, 그로부터 파생된 변수)을 개발자가 직접 나열한다 — React가 자동으로 분석해서 채워주지 않는다.
+- 비교는 **하나라도 다르면 실행**(OR 조건)이지 전부 바뀌어야 하는 게 아니다. 각 값을 이전 렌더링 값과 `Object.is`로 비교한다.
+- 비교는 **위치(인덱스)별**로 이뤄진다 (이름이 아니라 자리로 매칭) — 3단계에서 다룬 "Hook은 이름이 아니라 호출 순서로 추적한다"는 패턴과 같은 원리. 같은 코드가 매 렌더링 그대로 재실행되는 거라 배열 안 값들의 순서가 렌더링마다 바뀔 일이 없어서, 실질적으로 "순서를 신경 써야 하나?"라는 질문 자체가 성립하지 않는다.
+
+**4) Cleanup 함수 — 선택 사항, 필요할 때만 반환**
+effect 함수가 **함수를 반환**하면 React는 그걸 "이 effect를 정리하는 방법"으로 기억해뒀다가 정해진 타이밍에 대신 호출해준다. 강제가 아니라 "등록해두면 누군가 명시적으로 해제해야 하는" 리소스(타이머, 이벤트 리스너, 구독)에만 필요하다.
+
+```tsx
+useEffect(() => {
+  const timer = setTimeout(() => setShowSaved(false), 2000);
+  return () => clearTimeout(timer);  // cleanup
+}, [comments]);
+```
+
+Cleanup이 호출되는 시점은 정확히 두 가지:
+
+| 시점 | 설명 |
+|---|---|
+| ① 같은 effect가 재실행되기 직전 | 의존성이 바뀌어 effect가 다시 돌기 전에, 이전 실행이 남긴 걸 먼저 정리 |
+| ② 컴포넌트가 화면에서 사라질 때(unmount) | 마지막으로 살아있던 리소스를 정리 |
+
+`[]`(빈 배열)만 있는 effect라도 cleanup을 반환했다면, 그 함수는 재실행 없이도 **언마운트 시점까지 대기**하다가 그때 호출된다 — 의존성 배열의 내용물과는 무관하게, React가 반환된 cleanup 함수 참조를 내부에 저장해두기 때문.
+
+**5) 클래스 컴포넌트 생명주기와의 대응**
+`useEffect`는 클래스 컴포넌트의 세 가지 생명주기 메서드를 "effect 함수(마운트+업데이트) + cleanup 함수(업데이트 전 정리+언마운트)"라는 하나의 패턴으로 통합한 것이다.
+
+| 시점 | 클래스 컴포넌트 | `useEffect` |
+|---|---|---|
+| 처음 그려질 때 | `componentDidMount` | effect 함수 실행 |
+| 의존성 바뀌어 다시 그려질 때 | `componentDidUpdate` | cleanup(이전 것 정리) → effect 함수 재실행 |
+| 사라질 때 | `componentWillUnmount` | cleanup 함수 실행 |
+
+**6) "여러 번 호출될 수 있다"는 가정 — 리렌더링과는 다른 얘기**
+State가 바뀌어 리렌더링되는 것은 당연히 정상 동작(입력이 달라졌으니 새 결과)이다. 여기서 말하는 "여러 번 호출"은 **같은 입력(같은 state/props)인데도 React가 의도적으로 한 번 더 호출**하는 예외적인 상황을 가리킨다.
+- **개발 모드 Strict Mode**: 컴포넌트 함수를 두 번 연달아 호출하고, effect는 마운트 시 "실행 → 즉시 cleanup → 다시 실행"을 왕복시킨다 — cleanup이 effect가 한 일을 제대로 되돌리는지 미리 검증하려는 목적. 프로덕션 빌드에선 사라진다.
+- **Concurrent 렌더링**: 진행 중이던 렌더링을 더 급한 업데이트가 끼어들어 버리고 재시작할 수 있다.
+
+두 경우 다 "여러 번 불려도 안전한(순수한) 코드"를 강제하기 위한 장치이지, 최종적으로 화면에 반영되는 결과가 이상해지는 건 아니다.
+
+**7) Stale closure — TypeScript로는 못 잡는다**
+의존성 배열에 실제로 쓰는 값을 빠뜨리면, effect 안 함수가 그 값의 **옛날 값을 계속 기억**하는 stale closure 버그가 생긴다. 이건 "타입이 맞냐"의 문제가 아니라 "실행 시점에 어떤 값을 캡처했냐"의 문제라서 TypeScript 컴파일러가 잡아줄 수 없다. 이걸 잡아주는 건 `eslint-plugin-react-hooks`의 `exhaustive-deps` 같은 **린트** 규칙인데, 확인해보니 이 프로젝트의 `.oxlintrc.json`엔 `react/rules-of-hooks`만 켜져 있고 `exhaustive-deps`는 없다 — 의존성 배열은 지금 당장은 직접 주의해서 챙겨야 하는 부분.
+
+**실습 내용:** `Profile`에 `useEffect` 두 개를 추가.
+1. `likes`/`name`이 바뀔 때마다 `document.title`을 동기화 — 의존성 배열이 있는 기본 패턴.
+2. 댓글이 등록되면(`comments` 변경) "저장되었습니다" 알림을 띄웠다가 1초 후 `setTimeout`으로 자동으로 끄고, 연달아 제출 시 이전 타이머를 `clearTimeout`으로 정리하는 cleanup까지 직접 작성 (`TODO(human)`).
+
+```tsx
+useEffect(() => {
+  if (comments.length === 0) return; // 마운트 시점(빈 배열)엔 알림 안 띄움
+  setShowSaved(true);
+  const timer = setTimeout(() => setShowSaved(false), 1000);
+  return () => clearTimeout(timer);  // 연달아 제출 시 이전 타이머 정리
+}, [comments]);
+```
+
+**흔한 실수 (직접 겪음):**
+- `setTimeout`과 `clearTimeout`의 시그니처를 혼동 — `clearTimeout(() => setShowSaved(false), 3000)`처럼 `setTimeout`의 형태(콜백+지연시간)를 `clearTimeout`에 그대로 써버림. `clearTimeout`은 타이머 ID 1개만 받는 "취소" 함수라 컴파일 에러(`TS2554: Expected 1 arguments, but got 2`)로 바로 드러났다. 게다가 이 상태로는 애초에 `setTimeout` 호출 자체가 없어서 `showSaved`를 되돌릴 예약이 걸리지도 않았음.
+- 마운트 가드를 `comments.length > 0 && setShowSaved(true);`처럼 JSX 밖(statement 자리)에서 `&&`로 작성 — 동작은 하지만 oxlint가 `no-unused-expressions` 경고를 냄. JSX `{}` 안에서는 `&&`가 "렌더링할 값"으로 평가되는 표현식이라 자연스럽지만, statement 자리에서 조건부 실행이 목적이라면 `if (comments.length === 0) return;`처럼 `if`를 쓰는 게 정석 — 1단계 규칙 ⑤("JSX `{}` 안엔 표현식만")의 반대 케이스로, "표현식 자리가 아닌 곳에 표현식만 써도 문제"라는 걸 보여준 사례.
