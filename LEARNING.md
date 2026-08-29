@@ -13,7 +13,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 5 | 조건부 렌더링 & 리스트 렌더링 | ✅ 완료 |
 | 6 | `useEffect`와 부수효과 | ✅ 완료 |
 | 7 | Form 다루기 | ✅ 완료 |
-| 8 | 컴포넌트 합성 & 커스텀 훅 | ⬜ 예정 |
+| 8 | 컴포넌트 합성 & 커스텀 훅 | ✅ 완료 |
 
 ---
 
@@ -583,3 +583,85 @@ function handleCommentSubmit(e: FormEvent<HTMLFormElement>) {
 - **2차 시도:** `if (e.target.name.match("auther"))`처럼 특정 필드 이름으로 분기 — 오타(`auther`)는 둘째치고, 이렇게 분기하면 조건에 안 걸리는 다른 필드(`text`)는 아예 처리가 안 돼서 "하나의 핸들러로 모든 필드 처리"라는 애초의 목적이 깨짐.
 - **공통 문법 실수:** `{ e.target.name: e.target.value }`처럼 대괄호 없이 변수를 객체 키로 사용 — computed property name(`{ [expr]: value }`)의 `[]`를 빠뜨리면 파서가 `e.target.name`을 리터럴 키로 해석하려다 실패.
 - **최종적으로 해결한 형태:** 분기 없이 `{ [e.target.name]: e.target.value }`로 통일하고, `setForm({ ...form, ...obj })`로 병합.
+
+---
+
+## 8단계: 컴포넌트 합성 & 커스텀 훅
+
+**실습 파일:** `src/components/Section.tsx`(신규), `src/hooks/useAutoHide.ts`(신규), `src/components/Profile.tsx`
+
+**배운 개념:**
+
+**1) 컴포넌트 합성 — `children` prop**
+2단계에서 "나중에 다룰 대안"으로 미리 언급했던 패턴. 완성된 JSX를 통째로 다른 컴포넌트에 넘겨서, 그 컴포넌트가 레이아웃만 제공하고 내용물은 신경 안 쓰게 만드는 방식이다.
+
+```tsx
+interface SectionProps {
+  title: string;
+  children: ReactNode;
+}
+
+function Section({ title, children }: SectionProps) {
+  return (
+    <section>
+      <h2>{title}</h2>
+      {children}
+    </section>
+  );
+}
+```
+
+**2) `children`도 그냥 props다 — App→Profile과 동일한 메커니즘**
+```tsx
+// App → Profile
+<Profile name="ㅇㅈㅇ" intro="Hello World" stack={[...]} />
+// 컴파일: Profile({ name: "ㅇㅈㅇ", intro: "Hello World", stack: [...] })
+
+// Profile → Section
+<Section title="댓글">...JSX...</Section>
+// 컴파일: Section({ title: "댓글", children: ...JSX... })
+```
+둘 다 "부모가 자식을 호출하며 props 객체 하나를 넘긴다"는 동일한 구조다. `children`은 이름이 정해진 특별한 prop일 뿐 — 여는 태그와 닫는 태그 **사이에 쓴 내용**을 JSX 컴파일러가 자동으로 그 값으로 채워준다는 점만 다르고, 전달 메커니즘 자체는 다르지 않다.
+
+**3) `App → Profile → Section` — 부모/자식 관계는 맞지만 "누가 만들었는지"는 구분해야 한다**
+| 컴포넌트 | 역할 |
+|---|---|
+| `App` | `Profile`을 렌더링, `name`/`intro`/`stack`만 내려줌 (`Section`엔 관여 안 함) |
+| `Profile` | 댓글 관련 JSX(`<form>`, 알림, 목록)를 **직접 작성**해서 `<Section title="댓글">...</Section>`로 감싸 렌더링 |
+| `Section` | `children` prop을 **받아서** `<h2>{title}</h2>` 옆에 그대로 꽂아 넣기만 함 (내용물이 뭔지는 모름) |
+
+`Section`의 내용물은 `App`이 내려준 게 아니라 `Profile`이 자기 렌더링 로직 안에서 직접 구성한 것. 진짜 "prop drilling 회피용 합성"(바깥 컴포넌트가 내용을 결정해서 안쪽 레이아웃 컴포넌트에 넘기는 패턴, 예: `App`이 `<Layout><Profile /></Layout>`처럼 감싸는 경우)과는 활용 목적이 살짝 다르다 — 지금 `Section`은 `Profile` 내부에서만 쓰는 재사용 가능한 레이아웃 조각.
+
+**4) `ReactNode` 타입과 `createElement` 컴파일은 서로 다른 레이어**
+- **런타임(JS 컴파일)**: `<Section title="댓글">여러 형제 태그들</Section>`을 쓰면, `ReactNode` 타입 유무와 무관하게 **1단계에서 배운 JSX 컴파일**이 각 형제 태그를 개별 `createElement` 호출로 바꾸고, 그 결과들을 배열로 묶어 `children`에 담아준다.
+- **컴파일 시점(타입 검사)**: `ReactNode`는 그냥 TypeScript **타입**이다. "children 자리엔 렌더링 가능한 값이면 뭐든 와도 된다"는 검사 기준일 뿐, 뭔가를 실행해서 만들어내는 코드가 아니다.
+
+1단계 규칙("컴포넌트의 `return`은 최상위 요소 하나만")이 `children`엔 안 걸리는 이유도 여기서 나온다 — `return`은 함수의 반환값 제약이고, `children`은 이미 만들어진 값(배열 포함)을 **prop으로 전달**하는 것뿐이라 별개의 제약이다.
+
+**5) 커스텀 훅 — 반복되는 state+effect 로직을 함수로 추출**
+6단계에서 `Profile.tsx` 안에 직접 썼던 "저장 알림 자동 숨김" `useEffect`를 재사용 가능한 형태로 뽑아냄.
+
+```tsx
+function useAutoHide(items: unknown[], delay: number): boolean {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (items.length === 0) return;
+    setVisible(true);
+    const timer = setTimeout(() => setVisible(false), delay);
+    return () => clearTimeout(timer);
+  }, [items, delay]);
+  return visible;
+}
+
+// 사용하는 쪽
+const showSaved = useAutoHide(comments, 1000);
+```
+- `use`로 시작하는 이름은 스타일 취향이 아니라 **린터(`react/rules-of-hooks`)가 "이 함수가 Hook인지"를 판단하는 실제 기준**이다 — `use` + 대문자로 시작하는 카멜케이스 이름이어야 도구가 내부의 `useState`/`useEffect` 호출에 Hook 규칙(최상위에서만 호출 등)을 적용해준다.
+- 새로운 메커니즘이 추가된 게 아니라, `comments`/`showSaved`/`1000`처럼 컴포넌트에 하드코딩됐던 이름들을 `items`/`visible`(내부)/`delay`라는 매개변수·내부 state로 바꿔서 별도 함수로 옮긴 것뿐 — 로직은 6단계와 100% 동일.
+
+**실습 내용:** `Section` 컴포넌트(합성 예시)는 직접 작성해서 제공. `useAutoHide` 커스텀 훅은 `TODO(human)`으로 남겨 6단계 로직을 일반화해서 작성하도록 진행. `Profile.tsx`는 `showSaved` state+effect를 제거하고 `const showSaved = useAutoHide(comments, 1000)`로 교체, 댓글 관련 JSX 전체를 `<Section title="댓글">...</Section>`로 감쌈.
+
+**흔한 실수 (직접 겪음):**
+- **의존성 배열 누락:** 첫 시도에서 `useEffect(() => {...})`처럼 두 번째 인자를 아예 빠뜨림 — `items`가 안 바뀌어도(예: `likes` 버튼 클릭, 입력창 타이핑 등 무관한 리렌더링에도) effect가 매번 재실행되는 문제. `oxlint`의 `exhaustive-deps` 경고로 바로 드러남 — 6단계 Q&A에서 "이 프로젝트엔 이 규칙이 없다"고 잘못 안내했던 걸 여기서 정정: `.oxlintrc.json`에 명시돼 있진 않아도 `react` 플러그인이 기본으로 켜주는 규칙이었다.
+- **`return clearTimeout(timer);` — cleanup 함수를 반환한 게 아니라 즉시 실행해버림:** `return 표현식;`은 그 표현식을 그 자리에서 바로 평가한다. `clearTimeout(timer)`가 effect 실행 중 **즉시 호출**되면서 방금 예약한 타이머를 스스로 취소해버리고, `clearTimeout`의 반환값(`undefined`)이 "cleanup 없음"으로 인식됨 — 결과적으로 `setVisible(false)`가 예약은 되지만 실행되기 전에 취소돼서 영원히 안 꺼지는 버그. `return () => clearTimeout(timer);`처럼 화살표 함수로 감싸야 "나중에 실행할 함수"로 전달된다. 이 타입 오류는 TypeScript로는 못 잡는다 — `clearTimeout`의 반환 타입(`void`)이 effect 콜백이 허용하는 반환 타입(`void | cleanup함수`) 중 하나라 컴파일은 통과해버림. 4단계에서 겪었던 "화살표 함수로 안 감싸서 실행이 안 됨" 실수의 정반대 방향(감싸야 하는데 안 감겨서 너무 일찍 실행됨) 버전.
+- **`delay`를 의존성 배열에서 빠뜨림:** effect 본문에서 `delay`를 쓰면서 `[items]`만 넣음 — 지금 호출부(`useAutoHide(comments, 1000)`)는 `delay`가 항상 고정값이라 당장 버그로 안 이어지지만, `exhaustive-deps`가 "쓰는 값은 다 배열에 넣어라"고 경고해서 `[items, delay]`로 수정. 5번 Q&A에서 얘기했던 stale closure 예방 원칙이 실전에서 적용된 사례.
