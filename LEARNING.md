@@ -665,3 +665,63 @@ const showSaved = useAutoHide(comments, 1000);
 - **의존성 배열 누락:** 첫 시도에서 `useEffect(() => {...})`처럼 두 번째 인자를 아예 빠뜨림 — `items`가 안 바뀌어도(예: `likes` 버튼 클릭, 입력창 타이핑 등 무관한 리렌더링에도) effect가 매번 재실행되는 문제. `oxlint`의 `exhaustive-deps` 경고로 바로 드러남 — 6단계 Q&A에서 "이 프로젝트엔 이 규칙이 없다"고 잘못 안내했던 걸 여기서 정정: `.oxlintrc.json`에 명시돼 있진 않아도 `react` 플러그인이 기본으로 켜주는 규칙이었다.
 - **`return clearTimeout(timer);` — cleanup 함수를 반환한 게 아니라 즉시 실행해버림:** `return 표현식;`은 그 표현식을 그 자리에서 바로 평가한다. `clearTimeout(timer)`가 effect 실행 중 **즉시 호출**되면서 방금 예약한 타이머를 스스로 취소해버리고, `clearTimeout`의 반환값(`undefined`)이 "cleanup 없음"으로 인식됨 — 결과적으로 `setVisible(false)`가 예약은 되지만 실행되기 전에 취소돼서 영원히 안 꺼지는 버그. `return () => clearTimeout(timer);`처럼 화살표 함수로 감싸야 "나중에 실행할 함수"로 전달된다. 이 타입 오류는 TypeScript로는 못 잡는다 — `clearTimeout`의 반환 타입(`void`)이 effect 콜백이 허용하는 반환 타입(`void | cleanup함수`) 중 하나라 컴파일은 통과해버림. 4단계에서 겪었던 "화살표 함수로 안 감싸서 실행이 안 됨" 실수의 정반대 방향(감싸야 하는데 안 감겨서 너무 일찍 실행됨) 버전.
 - **`delay`를 의존성 배열에서 빠뜨림:** effect 본문에서 `delay`를 쓰면서 `[items]`만 넣음 — 지금 호출부(`useAutoHide(comments, 1000)`)는 `delay`가 항상 고정값이라 당장 버그로 안 이어지지만, `exhaustive-deps`가 "쓰는 값은 다 배열에 넣어라"고 경고해서 `[items, delay]`로 수정. 5번 Q&A에서 얘기했던 stale closure 예방 원칙이 실전에서 적용된 사례.
+
+---
+
+## 다음 계획: 복습 퀴즈 & 할 일 목록(Todo List) 프로젝트
+
+8단계까지 로드맵을 완주한 뒤 나눈 대화 정리. 아직 실습 코드는 없고, 다음 세션에 이어갈 계획만 기록.
+
+**1) 컴포넌트를 나누는 기준 (Q&A)**
+
+정답 공식은 없지만 실무에서 쓰는 신호 다섯 가지:
+1. **재사용성** — 같은 UI 패턴이 반복되거나 반복될 조짐이 있으면 분리 (`Section`이 예시)
+2. **단일 책임** — "이 JSX 덩어리가 하는 일을 한 문장으로 설명 가능한가?" 여러 문장이 필요하면 분리 후보
+3. **state 소유권 경계** — 특정 state가 JSX의 일부에서만 쓰이고 나머지와 안 얽히면, 그 부분을 state와 함께 독립 컴포넌트로 분리 가능 (`Profile`의 `likes`는 댓글 쪽과 무관 → `LikeButton` 분리 후보)
+4. **크기/가독성** — 컴포넌트 함수가 스크롤해야 다 보일 정도로 길어지면 분리 신호
+5. **props 개수** — 계속 늘어나면 그 컴포넌트가 너무 많은 역할을 맡고 있다는 신호
+
+**분리 축이 두 개라는 점이 핵심** — "화면 구조로 나누기(컴포넌트)"와 "로직으로 나누기(커스텀 훅)"는 서로 다른 기준이다. `Section`은 시각적 레이아웃 블록이라 컴포넌트로, `useAutoHide`는 화면 모양과 무관한 상태/로직이라 커스텀 훅으로 뽑아낸 것이 이 구분을 보여주는 예시. `Profile`을 더 쪼갠다면 `LikeButton`/`CommentSection`으로 나눌 수 있다는 얘기까지 나눴지만, 지금 당장 리팩토링하진 않기로 함 — "결국 리팩토링 얘기라 여기까진 안 들어가겠다"는 결론.
+
+**2) 다음 프로젝트: 할 일 목록(Todo List)**
+
+8단계 개념(state, 조건부/리스트 렌더링, 폼, `useEffect`, 합성/커스텀 훅)만으로 간단한 앱을 직접 만들어보고, 부족한 개념(라우팅, 데이터 페칭, 전역 상태 등)은 필요할 때 그때그때 채워나가기로 함.
+
+- 데이터 모양: `{ id, text, completed }`
+- 새로 다룰 개념: 배열 항목을 **불변적으로 토글**(`.map()`으로 새 배열 만들며 해당 항목만 새 객체로 교체)하고 **불변적으로 삭제**(`.filter()`)하는 패턴 — 지금까지는 배열 끝에 추가만 해봤지, 중간 항목을 수정/제거해본 적은 없음
+- 5단계에서 "`key={index}`는 삭제 기능이 생기면 위험해진다"고 미리 경고해뒀던 상황이 여기서 실제로 발생 — Todo에 삭제 기능이 들어가므로 `key`는 반드시 `todo.id` 같은 고유값을 써야 함
+- 착수 직전 복습 퀴즈를 먼저 풀기로 하고 이번 세션은 여기서 마무리. `TodoList` 컴포넌트 파일은 아직 만들지 않은 상태(다음 세션에 처음부터 시작)
+
+**3) 복습 퀴즈 (다음 세션에 풀 것 — 1~8단계 각 1문항, 아직 미응답)**
+
+- **Q1 (1단계)** 다음 코드는 왜 컴파일 에러가 날까?
+  ```tsx
+  function Bad() {
+    return (
+      <div>A</div>
+      <div>B</div>
+    );
+  }
+  ```
+- **Q2 (2단계)** `interface ProfileProps`는 `App.tsx`가 아니라 `Profile.tsx`에서 정의한다. 왜 자식 쪽이 정의하는 게 맞을까?
+- **Q3 (3단계)** 아래 두 코드의 차이는? 버튼을 눌렀을 때 화면이 실제로 달라지는 건 어느 쪽인가?
+  ```tsx
+  // A
+  let count = 0;
+  <button onClick={() => count++}>{count}</button>
+
+  // B
+  const [count, setCount] = useState(0);
+  <button onClick={() => setCount(count + 1)}>{count}</button>
+  ```
+- **Q4 (4단계)** `<form onSubmit={handleSubmit}>`에서 `handleSubmit` 안에 `e.preventDefault()`를 안 쓰면 어떤 일이 일어날까?
+- **Q5 (5단계)** 리스트를 렌더링할 때 `key={index}`를 쓰면 위험해지는 상황은 구체적으로 언제일까?
+- **Q6 (6단계)** 다음 코드에 버그가 있다. 뭐가 문제일까?
+  ```tsx
+  useEffect(() => {
+    const timer = setTimeout(() => setVisible(false), 1000);
+    return clearTimeout(timer);
+  }, [items]);
+  ```
+- **Q7 (7단계)** `author`/`text` 두 input이 핸들러 하나(`handleFormChange`)를 공유하려면 어떤 문법이 꼭 필요할까? 그 문법이 왜 필요한지도 설명해보라.
+- **Q8 (8단계)** 커스텀 훅(`useAutoHide` 같은)이 일반 함수와 다른 점은 뭘까? 왜 이름이 꼭 `use`로 시작해야 할까?
