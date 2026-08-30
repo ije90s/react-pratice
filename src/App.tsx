@@ -1,4 +1,5 @@
 import Profile from './components/Profile'
+import TodoList from './components/TodoList'
 
 function App() {
   return (
@@ -9,6 +10,7 @@ function App() {
         intro="Hello World"
         stack={["node", "react", "typescript"]}
       />
+      <TodoList />
     </div>
   )
 }

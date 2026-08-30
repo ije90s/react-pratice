@@ -14,6 +14,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 6 | `useEffect`와 부수효과 | ✅ 완료 |
 | 7 | Form 다루기 | ✅ 완료 |
 | 8 | 컴포넌트 합성 & 커스텀 훅 | ✅ 완료 |
+| 9 | Todo List — 배열 중간 항목의 불변적 토글/삭제 | ✅ 완료 |
 
 ---
 
@@ -735,3 +736,59 @@ computed property name을 활용하여 키와 값들을 받는다. 둘 중에 �
 **피드백 반영:** 실행 전엔 `e.target.name`이 `"author"`인지 `"text"`인지 알 수 없으므로 객체 키를 하드코딩할 수 없고, `[e.target.name]`처럼 대괄호로 감싸 **동적으로 평가**해야 한다 — 이게 computed property name이 필요한 이유다.
 - **Q8 (8단계)** 커스텀 훅(`useAutoHide` 같은)이 일반 함수와 다른 점은 뭘까? 왜 이름이 꼭 `use`로 시작해야 할까?
 내부에서 다른 훅을 호출하는 평범한 함수. use 접두사는 스타일이 아니라 린터가 Hook 규칙 저용 대상을 판별하는 용
+
+---
+
+## 9단계: Todo List — 배열 중간 항목의 불변적 토글/삭제
+
+**실습 파일:** `src/components/TodoList.tsx`(신규), `src/App.tsx`
+
+**배운 개념:**
+
+**1) "끝에 추가"와 "중간 항목 수정/삭제"는 다른 문제다**
+4~7단계에서 다룬 `comments` 배열은 항상 `[...comments, 새값]`처럼 **끝에 추가만** 했다. Todo List는 처음으로 배열 **중간의 특정 항목**(`id`로 식별)을 건드려야 하는데, `todos[index].completed = true`처럼 직접 대입하면 안 된다 — state를 직접 mutate하면 React가 "이전 렌더링과 같은 배열 참조"로 착각해 리렌더링을 건너뛸 수 있다. 그래서 매번 **완전히 새로운 배열**을 만들어 `setTodos`에 넘겨야 한다.
+
+**2) `.map()`은 콜백의 반환값으로 새 배열을 만든다 — 반환을 빠뜨리면 전부 `undefined`**
+```tsx
+// ❌ if만 있고 else/반환이 없음 → 매 항목이 undefined가 됨 (TS가 void[]로 추론해 컴파일 에러)
+todos.map((item) => {
+  if (item.id === id) {
+    item.completed = !item.completed;  // 대입문일 뿐 반환이 아님, 게다가 직접 mutate
+  }
+});
+
+// ✅ 일치하면 새 객체, 아니면 원본 그대로 — 모든 분기에서 값을 반환
+todos.map((item) =>
+  item.id === id ? { ...item, completed: !item.completed } : item
+);
+```
+"조건에 안 걸리는 항목은 그냥 둔다"는 생각으로 `else`(또는 반대 케이스의 반환)를 빠뜨리기 쉬운데, `.map()`은 매 항목마다 빠짐없이 반환값을 책임져야 하는 함수다. 부수효과만 필요하고 새 배열이 필요 없는 경우엔 애초에 `.map()`이 아니라 반환값을 안 모으는 `.forEach()`를 써야 한다.
+
+**3) `.filter()`로 얻은 원소는 원본과 같은 참조 — 직접 대입하면 mutate**
+```tsx
+const matched = todos.filter(t => t.id === id);
+matched[0].completed = true;  // ❌ todos 배열 안의 실제 객체를 직접 건드림
+```
+`.filter()`는 조건에 맞는 원소들을 **새 배열에 담아 반환**하지만, 원소 자체는 원본과 동일한 객체 참조다. 새 값이 필요하면 `{ ...item, ... }`로 새 객체를 만들어야지, 필터링된 참조를 직접 대입하면 원본 state를 몰래 mutate하는 셈이 된다.
+
+**4) 객체 리터럴 안에서 배열 스프레드는 "인덱스로" 합쳐진다 — 그리고 TypeScript는 이걸 컴파일 에러로 못 잡는다**
+```tsx
+setTodos({ ...todos, ...newTodo });  // ❌
+```
+`{...배열}`은 배열 원소를 `{0: 값, 1: 값, ...}` 형태의 **일반 객체**로 풀어버린다. 그래서 `id` 기준이 아니라 **배열 인덱스** 기준으로 값이 덮어써지고, 결과물은 배열이 아닌 일반 객체가 된다. Node로 직접 실행해서 확인한 실제 결과:
+```
+{ '0': {토글된 항목}, '1': {토글된 항목(잘못 덮어씀)}, '2': {...} }
+Array.isArray(결과)  // false
+결과.map(...)         // TypeError: map is not a function
+```
+더 위험한 건, TypeScript(6.0.3)는 이 패턴을 `Todo[]`와 구조적으로 호환된다고 판단해서 **컴파일 에러를 내지 않는다** — `tsc --noEmit`으로 직접 검증해봐도 통과한다. 타입 검사가 통과했다고 런타임에도 올바르게 동작하는 건 아니라는 걸 보여준 사례. 다음 렌더링에서 `todos.map()`을 호출하는 순간 실제로 `"todos.map is not a function"` 런타임 에러가 난다.
+
+**5) 5단계에서 미리 경고했던 상황이 실제로 발생 — `key`는 반드시 고유 id**
+Todo에 삭제 기능이 생기면서 5단계 Q&A("배열 중간 항목이 삭제되면 `key={index}`가 위험해진다")가 실제로 적용되는 지점이 됐다. `<li key={todo.id}>`처럼 각 항목의 고유 `id`(`crypto.randomUUID()`로 생성)를 `key`로 사용해, 중간 항목이 삭제돼도 나머지 항목들의 매칭이 밀리지 않도록 함.
+
+**실습 내용:** `todos: { id, text, completed }[]` state와 추가 폼(제어 컴포넌트)은 미리 작성해서 제공. `toggleTodo`/`deleteTodo` 두 함수를 `TODO(human)`으로 남겨 불변적 토글(`.map()`)과 불변적 삭제(`.filter()`) 패턴을 직접 구현하도록 진행. `deleteTodo`는 첫 시도부터 정확했고, `toggleTodo`는 세 번의 시도 끝에 완성.
+
+**흔한 실수 (직접 겪음) — `toggleTodo`를 완성하기까지 3번의 시도:**
+- **1차 시도:** `.filter()`로 일치하는 항목만 골라낸 뒤 `{...todos, ...newTodo}`로 원본과 합치려 함 — 위 4번 항목의 버그(인덱스 기준 병합, 배열이 객체로 변함) 그대로 재현됨. 동시에 `.filter()`로 얻은 참조를 `.map()` 콜백 안에서 직접 mutate(`item.completed = ...`)하기도 함.
+- **2차 시도:** `.map()`으로 전체 배열을 순회하는 올바른 방향으로 바꿨지만, `if` 블록 안에서 `item.completed = !item.completed`라는 **대입문**만 쓰고 `return`을 빠뜨림 — 콜백이 모든 항목에서 `undefined`를 반환해 `newTodo`가 `[undefined, undefined, undefined]`가 됨. TypeScript가 이를 `void[]`로 정확히 추론해 `setTodos(newTodo)`에서 컴파일 에러(`TS2345`)로 잡아줌 — 3번(런타임 mutate) 실수와 달리 이번엔 컴파일 단계에서 바로 드러난 경우.
+- **최종 해결:** `if`/`else` 양쪽 분기 모두에서 값을 `return`하도록 수정 — 일치하면 `{ ...item, completed: !item.completed }`(새 객체), 아니면 `item`(원본 그대로). `tsc`/`oxlint` 통과 확인 및 Node로 직접 실행해 `a`/`c`는 원본 참조 그대로, `b`만 새 객체로 교체되고 결과가 여전히 배열임을 검증.
