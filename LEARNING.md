@@ -703,7 +703,9 @@ const showSaved = useAutoHide(comments, 1000);
     );
   }
   ```
+  리턴값은 한개의 값으로 리턴해야 하기 때문에, 지금 현재 두개 div를 전달하고 있다. 그래서 <> / <div> 로 감싸서 리턴해야 한다.
 - **Q2 (2단계)** `interface ProfileProps`는 `App.tsx`가 아니라 `Profile.tsx`에서 정의한다. 왜 자식 쪽이 정의하는 게 맞을까?
+부모쪽에서는 단순히 인자값을 전달할 뿐, 자식쪽에서 인터페이스를 이용하여 필수값들을 정의해서 렌더링하기 때문
 - **Q3 (3단계)** 아래 두 코드의 차이는? 버튼을 눌렀을 때 화면이 실제로 달라지는 건 어느 쪽인가?
   ```tsx
   // A
@@ -714,8 +716,12 @@ const showSaved = useAutoHide(comments, 1000);
   const [count, setCount] = useState(0);
   <button onClick={() => setCount(count + 1)}>{count}</button>
   ```
+  B쪽이다. useState를 이용하여 count가 계속 변경되나, A는 이벤트 클릭이 없다면, 계속 0인 상태로 있는다.
+  **피드백 반영:** "클릭이 없어서"가 아니라 "리렌더링 트리거가 없어서"가 핵심이다. A도 클릭하면 `count++`는 실제로 실행되어 변수 값 자체는 올라가지만, `useState`가 아니므로 React가 리렌더링을 하지 않는다. 그래서 클릭을 몇 번을 하든 화면에 찍힌 숫자는 최초 렌더링 시점 값(0)에 그대로 박제된다.
 - **Q4 (4단계)** `<form onSubmit={handleSubmit}>`에서 `handleSubmit` 안에 `e.preventDefault()`를 안 쓰면 어떤 일이 일어날까?
+form의 기본 동작은 서브밋되고 나서, 서버에 값을 전달하고, action에 명시한 페이지로 이동하는 것이다. 다만, 여기서는 action에 대한 페이지 이동을 명시하기 않았기 때문에, 해당 페이지 get으로 새로고침된다.
 - **Q5 (5단계)** 리스트를 렌더링할 때 `key={index}`를 쓰면 위험해지는 상황은 구체적으로 언제일까?
+배열 중간에 키가 삭제, 삽입, 재정렬이 일어나는 경우에, 이전의 값들과 맞지 않아서, 원하는 렌더링대로 출력되지 않는다.
 - **Q6 (6단계)** 다음 코드에 버그가 있다. 뭐가 문제일까?
   ```tsx
   useEffect(() => {
@@ -723,5 +729,9 @@ const showSaved = useAutoHide(comments, 1000);
     return clearTimeout(timer);
   }, [items]);
   ```
+return 자체가 그 즉시 실행이기 때문에, effect가 끝나자마자 방금 만든 타이머를 바로 취소해버린다.
 - **Q7 (7단계)** `author`/`text` 두 input이 핸들러 하나(`handleFormChange`)를 공유하려면 어떤 문법이 꼭 필요할까? 그 문법이 왜 필요한지도 설명해보라.
+computed property name을 활용하여 키와 값들을 받는다. 둘 중에 어느값이 실행되는지 알 수 없기 때문에
+**피드백 반영:** 실행 전엔 `e.target.name`이 `"author"`인지 `"text"`인지 알 수 없으므로 객체 키를 하드코딩할 수 없고, `[e.target.name]`처럼 대괄호로 감싸 **동적으로 평가**해야 한다 — 이게 computed property name이 필요한 이유다.
 - **Q8 (8단계)** 커스텀 훅(`useAutoHide` 같은)이 일반 함수와 다른 점은 뭘까? 왜 이름이 꼭 `use`로 시작해야 할까?
+내부에서 다른 훅을 호출하는 평범한 함수. use 접두사는 스타일이 아니라 린터가 Hook 규칙 저용 대상을 판별하는 용
