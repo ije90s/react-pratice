@@ -15,6 +15,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 7 | Form 다루기 | ✅ 완료 |
 | 8 | 컴포넌트 합성 & 커스텀 훅 | ✅ 완료 |
 | 9 | Todo List — 배열 중간 항목의 불변적 토글/삭제 | ✅ 완료 |
+| 9-1 | Todo List 확장 ① — 파생 값(남은 개수 표시) | ✅ 완료 |
 
 ---
 
@@ -806,4 +807,26 @@ Todo에 삭제 기능이 생기면서 5단계 Q&A("배열 중간 항목이 삭�
 3. **`useEffect`로 `localStorage` 저장/복원** — 지금은 새로고침하면 목록이 사라지는 상태. 6단계에서 배운 `useEffect`를 처음으로 "브라우저 저장소와 동기화"하는 실전 용도로 써보는 단계.
 4. **컴포넌트 분리 (`TodoItem`)** — 8단계 이후 정리했던 "컴포넌트 분리 기준"(재사용성/단일 책임/state 소유권/크기/props 개수)을 적용해 `<li>` 부분을 독립 컴포넌트로 쪼개보는 리팩터링 실습.
 
-다음 세션은 1번(남은 개수 표시)부터 시작.
+---
+
+## 9-1단계: 파생 값(derived value) — 남은 개수 표시
+
+**실습 파일:** `src/components/TodoList.tsx`
+
+**배운 개념:**
+
+**1) 파생 값은 별도 state가 필요 없다**
+`remainingCount`(완료 안 된 항목 개수)는 `todos` 배열만 있으면 항상 계산해낼 수 있는 값이다. 이런 값을 `useState`로 따로 관리하면 `toggleTodo`/`deleteTodo`/`handleAddSubmit` 등 `todos`를 바꾸는 모든 곳에서 매번 그 state도 같이 갱신해줘야 하고, 하나라도 빠뜨리면 `todos`와 `remainingCount`가 서로 안 맞는 버그가 생긴다. 대신 컴포넌트 함수 몸통에서 렌더링마다 다시 계산하면(`const remainingCount = todos.filter(...).length;`) `todos`가 바뀔 때 항상 자동으로 최신값이 되어 동기화 버그 자체가 생길 여지가 없다.
+
+```tsx
+const remainingCount = todos.filter((todo) => !todo.completed).length;
+```
+
+**2) `!조건` vs `조건 === false`**
+둘 다 지금 코드에서는 동일하게 동작하지만(`completed: boolean`으로 타입이 고정돼있으므로), 만약 나중에 `completed`가 `boolean | undefined`처럼 느슨해지면 결과가 갈린다 — `!undefined`는 `true`(카운트에 포함)지만 `undefined === false`는 `false`(카운트에서 제외)라서다. 값이 정확히 뭔지 모를 때는 `!조건`이, 정확히 특정 값인지 따질 때는 `=== 특정값`이 더 안전하다는 감각. 실무 관례상으로도 boolean엔 `!`가 더 짧고 흔히 쓰이는 표현이라 최종적으로 `!todo.completed`로 정리.
+
+**실습 내용:** `<p>{remainingCount}개 남음</p>`을 추가하고, `TODO(human)`으로 `remainingCount` 계산 로직을 직접 작성 — 첫 시도는 `todo.completed === false`로 정확하게 구현했고, 이후 `!todo.completed`로 바꿔봄.
+
+**메모:** 이번엔 코드량이 2줄 정도로 작아 처음엔 어시스턴트가 직접 작성했으나, 사용자가 "내가 쳐야 하는 거 아니냐"고 요청해 원복 후 `TODO(human)`으로 다시 진행 — 짧은 코드라도 핵심 개념(파생 값)이 걸려 있으면 직접 타이핑하고 싶다는 선호를 확인.
+
+다음 세션은 2번(완료 항목 필터링)부터 시작.

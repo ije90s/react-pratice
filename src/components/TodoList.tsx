@@ -41,9 +41,15 @@ function TodoList() {
     setTodos(newTodo);
   }
 
+  // TODO(human): remainingCount를 계산하세요.
+  // todos 중 completed가 false인 항목의 개수를 구해서 아래 <p>에서 사용합니다.
+  // 별도 useState 없이, 렌더링될 때마다 todos로부터 계산되는 "파생 값"으로 만드세요.
+  const remainingCount = todos.filter(todo => !todo.completed).length;
+
   return (
     <div>
       <h2>할 일 목록</h2>
+      <p>{remainingCount}개 남음</p>
       <form onSubmit={handleAddSubmit}>
         <input
           type="text"
