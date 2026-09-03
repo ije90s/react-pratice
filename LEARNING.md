@@ -16,6 +16,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 8 | 컴포넌트 합성 & 커스텀 훅 | ✅ 완료 |
 | 9 | Todo List — 배열 중간 항목의 불변적 토글/삭제 | ✅ 완료 |
 | 9-1 | Todo List 확장 ① — 파생 값(남은 개수 표시) | ✅ 완료 |
+| 9-2 | Todo List 확장 ② — 완료 항목 필터링 | ✅ 완료 |
 
 ---
 
@@ -830,3 +831,29 @@ const remainingCount = todos.filter((todo) => !todo.completed).length;
 **메모:** 이번엔 코드량이 2줄 정도로 작아 처음엔 어시스턴트가 직접 작성했으나, 사용자가 "내가 쳐야 하는 거 아니냐"고 요청해 원복 후 `TODO(human)`으로 다시 진행 — 짧은 코드라도 핵심 개념(파생 값)이 걸려 있으면 직접 타이핑하고 싶다는 선호를 확인.
 
 다음 세션은 2번(완료 항목 필터링)부터 시작.
+
+---
+
+## 9-2단계: 완료 항목 필터링
+
+**실습 파일:** `src/components/TodoList.tsx`
+
+**배운 개념:**
+
+**1) `visibleTodos`도 파생 값 — `filter` state는 "무엇을 보여줄지"만 기억한다**
+`filter: "all" | "active" | "completed"` state 하나를 새로 두고, 실제로 화면에 그릴 목록(`visibleTodos`)은 `todos`와 `filter` 두 값으로부터 렌더링 시점에 계산한다. `todos` 자체는 필터와 무관하게 항상 전체 데이터를 그대로 갖고 있고, "지금 어떤 항목만 보여줄지"는 순전히 화면 표시 방식의 문제라서 별도 state(`filteredTodos` 같은)로 중복 저장하지 않는다 — 9-1단계의 `remainingCount`와 같은 원리.
+
+```tsx
+const visibleTodos = todos.filter((todo) =>
+  filter === "active" ? !todo.completed : filter === "completed" ? todo.completed : todo
+);
+```
+
+**2) 타입 시스템이 못 잡는 로직 버그 — `active`/`completed` 조건이 뒤바뀜**
+첫 시도에서 `active` 분기에 `todo.completed`를, `completed` 분기에 `!todo.completed`를 반대로 씀 — "진행중" 버튼을 누르면 완료된 항목이, "완료" 버튼을 누르면 진행중인 항목이 보이는 버그. `Array.prototype.filter`의 콜백 반환 타입은 `unknown`으로 선언돼 있어서(boolean이 아닌 값을 반환해도 truthy/falsy로만 판단) `tsc`/`oxlint` 둘 다 통과했다 — 9단계에서 겪은 "타입은 맞지만 런타임 로직이 틀린" 패턴의 반복. dev 서버를 띄워 브라우저에서 버튼을 직접 눌러보고서야 발견해 두 조건을 맞바꿔 수정.
+
+**실습 내용:** `filter` state와 "전체"/"진행중"/"완료" 버튼 3개는 미리 작성해서 제공. `TODO(human)`으로 `visibleTodos` 계산 로직을 직접 작성하고, 목록의 빈 상태 체크(`todos.length === 0`)와 `.map()` 대상을 `todos`에서 `visibleTodos`로 교체.
+
+**흔한 실수 (직접 겪음):** `active`/`completed` 분기 조건이 서로 뒤바뀜 — 컴파일은 통과했지만 실제 버튼 클릭 결과가 반대로 나와 브라우저 테스트로 직접 발견하고 수정.
+
+다음 세션은 3번(`useEffect`로 `localStorage` 저장/복원)부터 시작.

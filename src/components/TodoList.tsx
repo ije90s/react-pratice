@@ -6,9 +6,12 @@ interface Todo {
   completed: boolean;
 }
 
+type FilterType = "all" | "active" | "completed";
+
 function TodoList() {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [text, setText] = useState("");
+  const [filter, setFilter] = useState<FilterType>("all");
 
   function handleTextChange(e: ChangeEvent<HTMLInputElement>) {
     setText(e.target.value);
@@ -22,9 +25,6 @@ function TodoList() {
     setText("");
   }
 
-  // TODO(human): 아래 두 함수를 구현하세요.
-  // toggleTodo: id가 일치하는 항목만 completed를 반전시킨 "새 객체"로 교체한 새 배열을 만들어 setTodos에 넘긴다.
-  // deleteTodo: id가 일치하지 않는 항목만 남긴 새 배열을 만들어 setTodos에 넘긴다.
   function toggleTodo(id: string) {
     const newTodo = todos.map((item) => {
       if(item.id === id){
@@ -41,10 +41,9 @@ function TodoList() {
     setTodos(newTodo);
   }
 
-  // TODO(human): remainingCount를 계산하세요.
-  // todos 중 completed가 false인 항목의 개수를 구해서 아래 <p>에서 사용합니다.
-  // 별도 useState 없이, 렌더링될 때마다 todos로부터 계산되는 "파생 값"으로 만드세요.
   const remainingCount = todos.filter(todo => !todo.completed).length;
+
+  const visibleTodos = todos.filter(todo => filter === "active" ? !todo.completed : filter === 'completed' ? todo.completed : todo);
 
   return (
     <div>
@@ -59,11 +58,16 @@ function TodoList() {
         />
         <button type="submit" disabled={!text.trim()}>추가</button>
       </form>
-      {todos.length === 0 ? (
+      <div>
+        <button onClick={() => setFilter("all")} disabled={filter === "all"}>전체</button>
+        <button onClick={() => setFilter("active")} disabled={filter === "active"}>진행중</button>
+        <button onClick={() => setFilter("completed")} disabled={filter === "completed"}>완료</button>
+      </div>
+      {visibleTodos.length === 0 ? (
         <div>할 일이 없어요</div>
       ) : (
         <ul>
-          {todos.map((todo) => (
+          {visibleTodos.map((todo) => (
             <li key={todo.id}>
               <span
                 style={{ textDecoration: todo.completed ? "line-through" : "none", cursor: "pointer" }}
