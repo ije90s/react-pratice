@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 
 interface Todo {
   id: string;
@@ -8,10 +8,27 @@ interface Todo {
 
 type FilterType = "all" | "active" | "completed";
 
+const STORAGE_KEY = "todos";
+
 function TodoList() {
-  const [todos, setTodos] = useState<Todo[]>([]);
+  const [todos, setTodos] = useState<Todo[]>(() => {
+    try{
+      const getTodo = localStorage.getItem(STORAGE_KEY);
+      if(getTodo === null){
+        return [];
+      }else{
+        return JSON.parse(getTodo);
+      }
+    }catch {
+      return [];
+    }
+  });
   const [text, setText] = useState("");
   const [filter, setFilter] = useState<FilterType>("all");
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+  }, [todos]);
 
   function handleTextChange(e: ChangeEvent<HTMLInputElement>) {
     setText(e.target.value);

@@ -17,6 +17,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 9 | Todo List — 배열 중간 항목의 불변적 토글/삭제 | ✅ 완료 |
 | 9-1 | Todo List 확장 ① — 파생 값(남은 개수 표시) | ✅ 완료 |
 | 9-2 | Todo List 확장 ② — 완료 항목 필터링 | ✅ 완료 |
+| 9-3 | Todo List 확장 ③ — `localStorage` 저장/복원 | ✅ 완료 |
 
 ---
 
@@ -857,3 +858,46 @@ const visibleTodos = todos.filter((todo) =>
 **흔한 실수 (직접 겪음):** `active`/`completed` 분기 조건이 서로 뒤바뀜 — 컴파일은 통과했지만 실제 버튼 클릭 결과가 반대로 나와 브라우저 테스트로 직접 발견하고 수정.
 
 다음 세션은 3번(`useEffect`로 `localStorage` 저장/복원)부터 시작.
+
+---
+
+## 9-3단계: `localStorage` 저장/복원
+
+**실습 파일:** `src/components/TodoList.tsx`
+
+**배운 개념:**
+
+**1) "복원"엔 `useEffect`가 아니라 `useState`의 지연 초기화(lazy initializer)를 쓴다**
+계획 단계에선 "`useEffect`로 저장/복원"이라 뭉뚱그렸지만, 실제로 두 작업의 성격이 다르다는 게 드러났다. **저장**은 `todos`가 바뀔 때마다 반응해야 하는 전형적인 부수효과라 `useEffect(() => {...}, [todos])`가 맞다. 반면 **복원**을 `useEffect(() => {...}, [])`(마운트 시 1회)로 만들면, 같은 첫 커밋에서 저장 effect와 복원 effect가 둘 다 실행되는데 — `setTodos(복원값)`은 그 즉시 `todos`를 바꾸는 게 아니라 다음 렌더링을 예약할 뿐이라, 같은 커밋에서 실행되는 저장 effect는 여전히 초기값(빈 배열)을 보고 그대로 `localStorage`에 덮어써버린다. 이 순서 문제를 피하려면 `useState(초기값)` 대신 **초기값을 계산하는 함수**를 넘긴다 — 이 함수는 컴포넌트가 처음 렌더링될 때 딱 한 번만 실행되고, effect보다도 먼저(렌더링 도중) 값이 확정되므로 순서 문제 자체가 생기지 않는다.
+
+```tsx
+const [todos, setTodos] = useState<Todo[]>(() => {
+  try {
+    const getTodo = localStorage.getItem(STORAGE_KEY);
+    if (getTodo === null) {
+      return [];
+    } else {
+      return JSON.parse(getTodo);
+    }
+  } catch {
+    return [];
+  }
+});
+
+useEffect(() => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
+}, [todos]);
+```
+
+**2) `try`/`catch` — 처음 배운 예외 처리 문법**
+`JSON.parse`는 인자가 유효한 JSON 형식이 아니면 에러를 던진다(`localStorage`에 저장된 값이 수동으로 깨졌거나 형식이 안 맞는 경우). `try` 블록을 위에서부터 실행하다 에러가 던져지면 남은 코드를 건너뛰고 즉시 `catch` 블록으로 넘어간다 — 이 프로젝트에서 처음 다룬 예외 처리 문법. `getTodo === null`(애초에 저장된 값이 없는 경우)과 `catch`(저장된 값은 있지만 파싱이 실패하는 경우)는 서로 다른 실패 상황을 처리하는 것이라 둘 다 필요하다.
+
+**실습 내용:** `useEffect` import와 `STORAGE_KEY` 상수는 미리 준비해서 제공. `TODO(human)`으로 ① `useState`의 지연 초기화로 `localStorage`에서 복원하는 로직, ② `todos` 변경 시 `localStorage`에 저장하는 `useEffect`를 직접 작성. dev 서버(`npm run dev`)를 띄워 할 일을 추가한 뒤 새로고침해서 실제로 유지되는지 브라우저에서 직접 확인.
+
+**흔한 실수 (직접 겪음):**
+- **API 혼동:** `localStorage.getItem(STORAGE_KEY)`(키로 저장된 값 조회) 대신 `localStorage.key(index)`(인덱스로 저장된 키 이름 조회)를 씀 — 완전히 다른 메서드라 숫자를 기대하는 자리에 문자열을 넘겨 타입 에러(`TS2345`)로 바로 드러남.
+- **미완성 삼항 연산자:** `조건 ? : []`처럼 참일 때 값을 빠뜨려 문법 자체가 성립하지 않음.
+- **`return` 누락 (반복):** `useState(() => { ... })`의 화살표 함수도 `{}` 블록 본문이라 `return`이 필요한데, if/else 각 분기에서 값만 계산하고 반환을 빠뜨려 `undefined`가 되는 실수 — 1단계·9단계에서 이미 겪었던 패턴이 새 문맥(지연 초기화 함수)에서 재발.
+- **미완성 메서드 체이닝:** `localStorage.getItem(STORAGE_KEY).`처럼 점(`.`)만 찍고 뒤를 안 붙여 컴파일 에러(`Identifier expected`)로 바로 드러남.
+
+다음 세션은 4번(컴포넌트 분리 — `TodoItem`)부터 시작.
