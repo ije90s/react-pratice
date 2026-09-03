@@ -18,6 +18,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 9-1 | Todo List 확장 ① — 파생 값(남은 개수 표시) | ✅ 완료 |
 | 9-2 | Todo List 확장 ② — 완료 항목 필터링 | ✅ 완료 |
 | 9-3 | Todo List 확장 ③ — `localStorage` 저장/복원 | ✅ 완료 |
+| 9-4 | Todo List 확장 ④ — 컴포넌트 분리(`TodoItem`) | ✅ 완료 |
 
 ---
 
@@ -901,3 +902,29 @@ useEffect(() => {
 - **미완성 메서드 체이닝:** `localStorage.getItem(STORAGE_KEY).`처럼 점(`.`)만 찍고 뒤를 안 붙여 컴파일 에러(`Identifier expected`)로 바로 드러남.
 
 다음 세션은 4번(컴포넌트 분리 — `TodoItem`)부터 시작.
+
+---
+
+## 9-4단계: 컴포넌트 분리 — `TodoItem`
+
+**실습 파일:** `src/components/TodoItem.tsx`(신규), `src/components/TodoList.tsx`
+
+**배운 개념:**
+
+**1) 분리된 컴포넌트는 부모의 지역 함수를 공유하지 않는다 — props로만 연결된다**
+`toggleTodo`/`deleteTodo`는 `TodoList` 함수 몸통 안에 정의된 지역 함수라서, 별도 파일·별도 함수인 `TodoItem`에서는 이름만으로 접근할 수 없다(스코프가 다름). 8단계에서 배운 "`children`도 그냥 props"라는 원리의 연장선 — 함수도 값이라서, 부모가 가진 함수를 자식이 쓰려면 `onChange`/`onSubmit`처럼 **props로 전달**해야 한다. `TodoItemProps`에 `onToggle: (id: string) => void` / `onDelete: (id: string) => void`를 선언하고, `TodoList`가 실제 함수(`toggleTodo`, `deleteTodo`)를 값으로 채워 넘겨줌.
+
+**2) props를 "낱개 필드"로 펼칠지 "객체 하나"로 받을지**
+첫 시도는 `{ id, text, completed }`처럼 `Todo`의 필드를 낱개로 펼쳐서 받았는데, `TodoList`의 호출부는 `<TodoItem todo={todo} .../>`처럼 객체 하나를 통째로 넘기고 있어서 타입이 안 맞았다(`Property 'todo' does not exist`). 최종적으로 `todo: Todo`(이미 정의된 타입을 그대로 필드 타입으로 재사용)로 통일 — 2단계에서 다룬 "인터페이스는 필요한 데이터 모양을 선언하는 계약"이라는 개념이, 이번엔 원시값이 아니라 다른 인터페이스(`Todo`)를 필드 타입으로 품는 형태로 확장된 사례.
+
+**3) 타입을 다른 파일에서 재사용하기 — `export`/`import type`**
+`Todo` 인터페이스는 원래 `TodoList.tsx`에 있었는데, `TodoItem.tsx`도 이 타입이 필요해서 `export interface Todo`로 내보내고 `import type { Todo } from "./TodoList"`로 가져다 씀. 컴포넌트(`export default TodoList`)를 내보내던 것과 같은 `export` 문법이 타입에도 그대로 적용된다는 걸 확인.
+
+**실습 내용:** `TodoList.tsx`의 `<li key={todo.id}>...</li>` 블록(텍스트 클릭 토글 + 삭제 버튼)을 독립된 `TodoItem` 컴포넌트로 분리. `Todo` 타입 export, `TodoItem.tsx` 신규 작성, `TodoList.tsx`에서 `.map()` 안을 `<TodoItem key={todo.id} todo={todo} onToggle={toggleTodo} onDelete={deleteTodo} />`로 교체하는 작업을 `TODO(human)`으로 진행. dev 서버에서 추가/토글/삭제/필터/새로고침 전체 동작이 분리 전과 동일한지 확인.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** `TodoItemProps`에 `id`/`text`/`completed`를 낱개 필드로, `onToggle`/`onDelete` 없이 컴포넌트 본문에서 `toggleTodo(id)`/`deleteTodo(id)`를 직접 호출 — 두 문제가 겹침: ① 스코프 밖의 함수를 직접 참조해 `Cannot find name 'toggleTodo'`(`TS2304`), ②애초에 콜백을 props로 받지 않음. 컴파일 에러로 스코프 문제가 먼저 드러남.
+- **2차 시도:** `onToggle`/`onDelete`는 추가했지만 여전히 `id`/`text`/`completed` 낱개 필드 방식 유지 — `TodoList.tsx`의 호출부(`todo={todo}`)와 안 맞아 `Property 'todo' does not exist on type 'TodoItemProps'`(`TS2322`) 에러.
+- **최종 해결:** `TodoItemProps`를 `{ todo: Todo; onToggle: (id: string) => void; onDelete: (id: string) => void }`로 통일하고, 컴포넌트 본문도 `todo.id`/`todo.text`/`todo.completed`로 접근하도록 수정.
+
+이번 세션으로 Todo List 확장 계획(9-1~9-4) 전 항목 완료. 다음 세션 계획은 아직 미정 — 새 세션에서 다음 학습 주제를 정하는 것부터 시작.

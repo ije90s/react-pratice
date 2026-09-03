@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import TodoItem from "./TodoItem";
 
-interface Todo {
+export interface Todo {
   id: string;
   text: string;
   completed: boolean;
@@ -85,15 +86,7 @@ function TodoList() {
       ) : (
         <ul>
           {visibleTodos.map((todo) => (
-            <li key={todo.id}>
-              <span
-                style={{ textDecoration: todo.completed ? "line-through" : "none", cursor: "pointer" }}
-                onClick={() => toggleTodo(todo.id)}
-              >
-                {todo.text}
-              </span>
-              <button onClick={() => deleteTodo(todo.id)}>삭제</button>
-            </li>
+            <TodoItem key={todo.id} todo={todo} onToggle={toggleTodo} onDelete={deleteTodo} />
           ))}
         </ul>
       )}
