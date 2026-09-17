@@ -14,6 +14,11 @@ interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+interface ApiResponseEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+
 export async function apiFetch<T>(
   path: string,
   { token, body, headers, ...rest }: ApiFetchOptions = {},
@@ -37,5 +42,6 @@ export async function apiFetch<T>(
     return undefined as T;
   }
 
-  return res.json();
+  const envelope: ApiResponseEnvelope<T> = await res.json();
+  return envelope.data;
 }

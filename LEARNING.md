@@ -21,6 +21,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 9-4 | Todo List 확장 ④ — 컴포넌트 분리(`TodoItem`) | ✅ 완료 |
 | 10 | challenge-api 연동 ① — 인증 상태 관리 (Context API) | ✅ 완료 |
 | 11 | challenge-api 연동 ② — 회원가입/로그인 폼 (첫 실제 API 연동) | ✅ 완료 |
+| 12 | challenge-api 연동 ③ — 응답 envelope 언래핑 | ✅ 완료 |
 
 ---
 
@@ -1025,5 +1026,41 @@ function LoginPage() {
 - **4차 다듬기:** `if (err instanceof ApiError) { setError(...) }`만 있어 그 외 에러 케이스에서 메시지가 안 뜨던 것을, `SignupPage`와 같은 `err instanceof ApiError ? ... : "로그인에 실패했습니다."` 삼항식으로 통일.
 
 **남겨둔 것:** 아직 `challenge-api` 백엔드를 로컬에서 띄우지 않아서, 이 두 폼은 실제 요청으로 브라우저에서 끝까지 확인하지는 못한 상태 — 백엔드 접속 정보가 정해지면 `npm run dev`로 직접 가입/로그인까지 확인 필요.
+
+---
+
+## 12단계: challenge-api 연동 ③ — 응답 envelope 언래핑
+
+**실습 파일:** `src/api/client.ts`
+
+**배경:** `challenge-api`가 로컬에서 이미 떠 있어서(`docker`로 mariadb, `npm run start:dev`로 서버) `curl`로 실제 회원가입/로그인 요청을 직접 보내봤다. 그 결과 `LoginResponse`가 기대한 `{ access_token }`이 아니라 `{ success: true, data: { access_token } }` 형태로 온다는 걸 발견 — 백엔드의 `src/common/interceptor/response.interceptor.ts`가 **모든** 컨트롤러 응답을 전역으로 감싸고 있었다. 타입을 아무리 정확히 선언해도, 실제 서버가 그 모양으로 응답한다는 보장은 타입 시스템이 해주지 않는다는 걸 실제 요청으로 확인한 사례 — 11단계에서 "남겨둔 것"으로 미뤄뒀던 실제 검증이 여기서 값을 발휘함.
+
+**배운 개념:**
+
+**1) 제네릭 인터페이스로 "감싸는 모양" 자체를 타입으로 표현**
+```ts
+interface ApiResponseEnvelope<T> {
+  success: boolean;
+  data: T;
+}
+```
+`ApiFetchOptions`처럼 이미 알고 있던 `interface`에 타입 매개변수(`<T>`)를 붙이면, "무엇을 담고 있는지는 모르지만 이런 뼈대로 감싸져 있다"는 걸 표현할 수 있다. `apiFetch<LoginResponse>(...)`를 호출하면 이 `T`가 `LoginResponse`로 채워져서, `ApiResponseEnvelope<LoginResponse>`는 곧 `{ success: boolean; data: { access_token: string } }`가 된다.
+
+**2) `res.json()`에 타입을 미리 지정하면 이후 캐스팅이 필요 없어진다**
+```ts
+const envelope: ApiResponseEnvelope<T> = await res.json();
+return envelope.data;  // 이미 T로 추론됨 — as T 불필요
+```
+`res.json()`의 반환 타입은 원래 `any`라 아무 값이나 될 수 있는데, 변수 선언에 타입을 명시하면 그 시점부터 TypeScript가 `envelope`을 그 타입으로 취급한다. 그러면 `envelope.data`도 자동으로 `T`로 추론되어, 뒤에서 `as T`로 강제 변환할 필요가 사라진다 — "어디서 타입을 지정하느냐"에 따라 이후 코드에서 캐스팅이 필요한지 아닌지가 갈린다는 걸 보여준 사례.
+
+**3) 한 곳만 고치면 되는 이유 — 공통 모듈의 역할**
+이 수정은 `client.ts` 한 파일에만 있고, `LoginPage.tsx`/`SignupPage.tsx`는 전혀 손대지 않았다. `apiFetch`를 호출하는 모든 곳이 "봉투를 벗기는 방법"을 몰라도 되게 만든 게 애초에 API 클라이언트를 공통 모듈로 분리해둔 이유(Phase 0)라는 걸 실감한 부분 — 앞으로 만들 챌린지/피드 API 호출도 이 봉투 문제를 신경 쓸 필요가 없다.
+
+**실습 내용:** `apiFetch`의 마지막 줄, `TODO(human)`으로 남겨진 부분을 `ApiResponseEnvelope<T>` 타입을 정의해 `res.json()` 결과에서 `data`만 꺼내 반환하도록 수정. 이후 dev 서버(`npm run dev`)와 로컬 `challenge-api`(`localhost:3000`)를 함께 띄운 상태로 브라우저에서 `/signup` → `/login` 흐름을 직접 확인해 `localStorage`에 순수 토큰 문자열이 저장되는 것까지 검증.
+
+**흔한 실수 (직접 겪음) — 3번의 시도:**
+- **1차 시도:** `ApiResponseEnvelope<T>` 인터페이스를 정의는 했지만 실제로는 안 쓰고, `res.json()`(타입 `any`)의 결과를 그대로 `envelope`에 담은 뒤 `envelope.data as T`로 캐스팅 — 컴파일은 통과하지만 `as T`가 타입 검사 없이 "믿고 넘어가는" 연산이라 애써 만든 인터페이스가 아무 역할을 못 함. oxlint가 `'ApiResponseEnvelope'이(가) 선언되었지만 사용되지 않았습니다` 경고로 알려줌.
+- **2차 시도:** `res.json()`의 결과 자체를 `const envelope: ApiResponseEnvelope<T> = await res.json();`로 타입 지정해서 인터페이스를 실제로 활용하도록 수정.
+- **3차 다듬기:** `envelope.data`가 이미 `T`로 추론되므로 마지막 `return envelope.data as T;`의 `as T`가 불필요해짐 — 제거.
 
 다음은 `SCREEN_PLAN.md` 체크리스트의 Phase 2(읽기 전용 화면들)로 이어감.
