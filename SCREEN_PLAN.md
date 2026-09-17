@@ -59,9 +59,9 @@
 > 진행 방식: 매 항목마다 (설계 갈림길 있으면 질문) → 스캐폴딩 + `TODO(human)` → `npm run build`/`npm run lint` 검증 → `LEARNING.md`에 기록. 자세한 배경은 대화 기록 참고.
 
 ### Phase 0 — 기반 (모든 화면의 전제조건)
-- [ ] 라우터 설치 — `react-router` (결정 완료)
-- [ ] API 클라이언트 공통 모듈 — fetch 래퍼 직접 작성 (결정 완료), base URL은 `challenge-api` 접속 정보 확정 전까지 환경변수 placeholder
-- [ ] JWT 저장/요청 부착 방식 — Context API로 인증 상태 관리 (신규 개념)
+- [x] 라우터 설치 — `react-router` (결정 완료)
+- [x] API 클라이언트 공통 모듈 — fetch 래퍼 직접 작성 (결정 완료), base URL은 `challenge-api` 접속 정보 확정 전까지 환경변수 placeholder
+- [x] JWT 저장/요청 부착 방식 — Context API로 인증 상태 관리 (신규 개념)
 
 ### Phase 1 — 인증 (폼만 있으면 됨, 의존성 최소)
 - [ ] `/signup` — `POST /user`

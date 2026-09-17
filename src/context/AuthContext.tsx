@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useState, useContext, type ReactNode } from "react";
 
 const STORAGE_KEY = "challenge_api_token";
 
@@ -17,7 +17,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // 3. `logout()` — state를 null로 만들고 localStorage에서 해당 키를 제거.
   // 9-3단계(Todo List localStorage 저장/복원)와 같은 패턴이지만,
   // 여기서는 값 하나(token)를 이 컴포넌트 트리 전체가 useAuth()로 꺼내 쓰게 되는 게 다른 점입니다.
-
+  const [token, setToken] = useState(localStorage.getItem(STORAGE_KEY));
+  function login(newToken: string){
+    if(newToken){
+      setToken(newToken);
+      localStorage.setItem(STORAGE_KEY, newToken);
+    }
+  }
+  function logout(){
+    if(token){
+      localStorage.removeItem(STORAGE_KEY);
+      setToken(null);
+    }
+  }
   const value: AuthContextValue = { token, login, logout };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

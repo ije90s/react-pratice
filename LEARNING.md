@@ -19,6 +19,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 9-2 | Todo List 확장 ② — 완료 항목 필터링 | ✅ 완료 |
 | 9-3 | Todo List 확장 ③ — `localStorage` 저장/복원 | ✅ 완료 |
 | 9-4 | Todo List 확장 ④ — 컴포넌트 분리(`TodoItem`) | ✅ 완료 |
+| 10 | challenge-api 연동 ① — 인증 상태 관리 (Context API) | ✅ 완료 |
 
 ---
 
@@ -928,3 +929,53 @@ useEffect(() => {
 - **최종 해결:** `TodoItemProps`를 `{ todo: Todo; onToggle: (id: string) => void; onDelete: (id: string) => void }`로 통일하고, 컴포넌트 본문도 `todo.id`/`todo.text`/`todo.completed`로 접근하도록 수정.
 
 이번 세션으로 Todo List 확장 계획(9-1~9-4) 전 항목 완료. 다음 세션 계획은 아직 미정 — 새 세션에서 다음 학습 주제를 정하는 것부터 시작.
+
+---
+
+## 10단계: challenge-api 연동 ① — 인증 상태 관리 (Context API)
+
+**실습 파일:** `src/context/AuthContext.tsx`(신규)
+
+**배경:** `challenge-api`(별도 repo) 백엔드와 통신하는 화면들을 `SCREEN_PLAN.md` 계획대로 만들기 시작. 모든 도메인 API가 `JwtAuthGuard`로 막혀 있어서, 로그인 토큰을 `/mypage`·`/challenges`·`/feeds/:id` 등 서로 무관한 8개 페이지 전부가 필요로 함 — prop drilling으로 풀기엔 트리 구조와 무관하게 필요한 곳이 너무 많아, 2단계에서 "나중에 다룰 대안"으로만 언급됐던 **Context API**를 처음 도입.
+
+**배운 개념:**
+
+**1) Context API — prop drilling을 안 거치고 값을 공유하는 법**
+`createContext`로 "값을 담을 그릇"을 만들고, `<AuthContext.Provider value={...}>`로 감싼 트리 안 어디서든 `useContext(AuthContext)`로 바로 꺼내 쓸 수 있다. `App → Layout → Header`처럼 몇 단계만 거치는 게 아니라, 트리 상에서 멀리 떨어진 컴포넌트끼리 값을 공유해야 할 때 쓰는 도구.
+
+```tsx
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [token, setToken] = useState(localStorage.getItem(STORAGE_KEY));
+  // ...
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth는 AuthProvider 내부에서만 사용할 수 있습니다.");
+  return ctx;
+}
+```
+`createContext(undefined)` + `useAuth()`에서 `undefined`면 에러를 던지는 패턴은 "Provider 밖에서 실수로 호출했을 때 조용히 깨지는 대신 즉시 명확한 에러로 드러내기" 위한 관용구.
+
+**2) `useState`/`localStorage` 지식을 새 문맥(Context)에 옮겨 적용**
+`token` state의 지연 초기화(`useState(localStorage.getItem(STORAGE_KEY))`)와 `login`/`logout`에서 state·`localStorage`를 함께 갱신하는 방식은 9-3단계(Todo List `localStorage` 저장/복원)와 원리가 같다. 차이는 그 값을 컴포넌트 하나가 아니라 `useAuth()`를 호출하는 트리 전체가 공유한다는 것.
+
+**3) 함수 타입 호환성 — 매개변수가 적은 함수는 "그냥 허용"된다**
+TypeScript는 `(token: string) => void` 자리에 매개변수가 없는 `() => void`도 에러 없이 허용한다 — 호출하는 쪽이 인자를 안 써도 되니까 "더 적게 받는 함수"는 안전하다고 보는 규칙. 그래서 `login()`이 매개변수를 빠뜨려도 컴파일은 통과했지만, 실제로는 로그인 API가 응답으로 준 새 토큰을 받을 방법이 없어 아무 의미 없는 함수가 되는 논리 버그였다 — **타입 체커가 못 잡아주는 종류의 실수**라는 걸 확인한 사례.
+
+**4) `const`/`let`의 TDZ(Temporal Dead Zone)**
+`function` 선언과 달리 `const`/`let`은 선언되기 전 줄에서 참조하면 "선언은 됐지만 아직 초기화 전이라 접근 불가"한 상태로 취급되어 에러가 난다. `const value = { token, ... }`을 `const [token, setToken] = useState(...)`보다 먼저 써서 겪은 문제.
+
+**실습 내용:** `AuthProvider` 내부에 `TODO(human)`으로 남겨진 세 가지 — ① `localStorage`에서 복원하는 `token` state, ② 새 토큰을 받아 state·`localStorage`를 함께 갱신하는 `login(newToken)`, ③ 둘 다 초기화하는 `logout()` — 를 직접 작성.
+
+**흔한 실수 (직접 겪음) — 3번의 시도:**
+- **1차 시도:** `const value = { token, login, logout }`을 `useState` 선언보다 위에 둬서 `token` TDZ 에러(`TS2448`/`TS2454`), `login`/`logout`도 아직 없어 `TS18004` 추가 발생.
+- **2차 시도:** 순서는 고쳤지만 `setToken()`을 "새 값을 반환해주는 함수"로 오해해 `const newToken: string = setToken()`처럼 사용 (`useState`의 setter는 항상 `void` 반환이라 `TS2322`/`TS2554`). 같은 시도에서 `login`이 매개변수 없이 기존 state의 `token`을 재사용하도록 고쳐졌는데, 이건 타입 에러 없이 통과했지만 앞서 3)에서 정리한 논리 버그였음.
+- **최종 해결:** `login(newToken: string)`이 매개변수를 받아 `setToken(newToken)` + `localStorage.setItem(STORAGE_KEY, newToken)`을 호출하고, `logout()`은 `localStorage.removeItem(STORAGE_KEY)` + `setToken(null)`로 state와 저장소를 함께 초기화하도록 정리.
+
+**남겨둔 것:** `AuthContext.tsx`가 컴포넌트(`AuthProvider`)와 훅(`useAuth`)을 한 파일에서 같이 export하고 있어 oxlint가 `react/only-export-components`(Fast Refresh 경고)를 띄운다 — 지금 단계에서는 무시하고 진행, 파일이 커지면 `useAuth`를 별도 파일로 분리하는 걸 고려.
+
+다음은 `SCREEN_PLAN.md` 체크리스트의 Phase 1(`/login`, `/signup` 폼)로 이어감.
