@@ -20,6 +20,7 @@ Vite + React + TypeScript 프로젝트로 React 핵심 개념을 단계별로 �
 | 9-3 | Todo List 확장 ③ — `localStorage` 저장/복원 | ✅ 완료 |
 | 9-4 | Todo List 확장 ④ — 컴포넌트 분리(`TodoItem`) | ✅ 완료 |
 | 10 | challenge-api 연동 ① — 인증 상태 관리 (Context API) | ✅ 완료 |
+| 11 | challenge-api 연동 ② — 회원가입/로그인 폼 (첫 실제 API 연동) | ✅ 완료 |
 
 ---
 
@@ -979,3 +980,50 @@ TypeScript는 `(token: string) => void` 자리에 매개변수가 없는 `() => 
 **남겨둔 것:** `AuthContext.tsx`가 컴포넌트(`AuthProvider`)와 훅(`useAuth`)을 한 파일에서 같이 export하고 있어 oxlint가 `react/only-export-components`(Fast Refresh 경고)를 띄운다 — 지금 단계에서는 무시하고 진행, 파일이 커지면 `useAuth`를 별도 파일로 분리하는 걸 고려.
 
 다음은 `SCREEN_PLAN.md` 체크리스트의 Phase 1(`/login`, `/signup` 폼)로 이어감.
+
+---
+
+## 11단계: challenge-api 연동 ② — 회원가입/로그인 폼 (첫 실제 API 연동)
+
+**실습 파일:** `src/pages/LoginPage.tsx` (`src/pages/SignupPage.tsx`는 동일 구조의 완성된 참고용으로 미리 제공)
+
+**배경:** `POST /user`(가입)와 `POST /user/login`(로그인)은 둘 다 body가 `{email, password}`로 같아서 폼 자체(제어 컴포넌트, `handleChange`)는 7단계 패턴을 그대로 재사용. 다른 점은 성공했을 때의 후속 처리뿐 — 가입은 응답에 토큰이 없어 `/login`으로 리다이렉트, 로그인은 응답의 `access_token`을 10단계에서 만든 `AuthContext`에 반영해야 함.
+
+**배운 개념:**
+
+**1) `catch` 절 안의 `err`는 기본적으로 `unknown`이다**
+```tsx
+try {
+  await apiFetch(...);
+} catch (err) {
+  setError(err instanceof ApiError ? err.message : "로그인에 실패했습니다.");
+}
+```
+`try` 블록 안에서 뭐가 던져질지 컴파일러는 알 수 없기 때문에, `catch`로 받는 값의 타입은 항상 `unknown`(또는 `any`) 취급된다. 그래서 `err.message`처럼 바로 접근할 수 없고, `instanceof`로 "이건 우리가 정의한 `ApiError`가 맞다"는 걸 좁혀준 뒤에야 안전하게 꺼낼 수 있다. TypeScript는 아예 `catch (err: ApiError)`처럼 `any`/`unknown` 이외의 타입 annotation을 문법적으로 금지한다(`TS1196`) — "무엇이 던져질지 모른다"는 전제를 타입 시스템 차원에서 강제하는 것.
+
+**2) Hook은 "값을 미리 꺼내두는 함수"지, 나중에 인자를 넘겨 다시 부르는 함수가 아니다**
+```tsx
+function LoginPage() {
+  const { login } = useAuth();   // 렌더링 시점에 미리 꺼내둔 함수
+  // ...
+  async function handleSubmit() {
+    login(accessToken);          // 나중에, 여기서 "그 함수"를 호출
+  }
+}
+```
+3단계에서 다룬 "Hook은 렌더링마다 컴포넌트 최상위에서 호출된다"는 규칙이 실제로 왜 중요한지 보여준 사례. `useAuth()`가 반환하는 `{ token, login, logout }`은 렌더링 시점에 스냅샷처럼 꺼내와 변수에 담아두는 것이고, 나중에 이벤트 핸들러 안에서 실제로 실행하는 건 그 변수(`login`)이지 `useAuth` 자신이 아니다. `handleSubmit` 안에서 `useAuth(token)`처럼 다시 호출하려 한 시도는 이 구분을 헷갈린 경우.
+
+**3) 응답 파싱 실패와 네트워크/서버 에러를 구분해서 메시지 통일**
+`ApiError`가 아닌 예외(네트워크 단절 등 `fetch` 자체가 던지는 에러)까지 고려해서, `SignupPage`와 동일하게 `instanceof` 삼항식으로 항상 사용자에게 보여줄 메시지가 있도록 통일. `if (err instanceof ApiError) { setError(...) }`만 쓰면 그 외의 경우엔 아무 메시지도 안 뜨고 조용히 실패하는 것과의 차이.
+
+**실습 내용:** `handleSubmit` 안에서 ① `apiFetch<LoginResponse>("/user/login", { method: "POST", body: form })` 호출, ② 응답의 `access_token`을 `login()`에 전달, ③ 성공 시 `navigate("/challenges")`, ④ 실패 시 `ApiError` 메시지를 `setError`로 표시하는 로직을 `TODO(human)`으로 작성. `SignupPage.tsx`를 참고용으로 옆에 두고 구조를 비교하며 작성.
+
+**흔한 실수 (직접 겪음) — 4번의 시도:**
+- **1차 시도:** `useAuth(loginInfo.access_token)`처럼 Hook 자체를 나중에 인자와 함께 다시 호출하려 함 — Hook과 "Hook이 반환한 값(함수)"을 혼동한 경우. 같은 시도에서 `catch(){}`(괄호 안 식별자 없음)도 문법 에러(`TS1003: 식별자가 필요합니다`).
+- **2차 시도:** `catch (apiError: ApiError)`처럼 catch 변수에 구체 타입을 직접 지정 — `TS1196`으로 차단됨(catch 변수는 `any`/`unknown`만 허용).
+- **3차 시도:** 컴파일은 통과했지만 `navigate("/challengs")`에 오타(`e` 누락) — 타입 체커가 못 잡는 종류의 실수라 `App.tsx`의 실제 라우트(`/challenges`)와 대조해서 직접 발견.
+- **4차 다듬기:** `if (err instanceof ApiError) { setError(...) }`만 있어 그 외 에러 케이스에서 메시지가 안 뜨던 것을, `SignupPage`와 같은 `err instanceof ApiError ? ... : "로그인에 실패했습니다."` 삼항식으로 통일.
+
+**남겨둔 것:** 아직 `challenge-api` 백엔드를 로컬에서 띄우지 않아서, 이 두 폼은 실제 요청으로 브라우저에서 끝까지 확인하지는 못한 상태 — 백엔드 접속 정보가 정해지면 `npm run dev`로 직접 가입/로그인까지 확인 필요.
+
+다음은 `SCREEN_PLAN.md` 체크리스트의 Phase 2(읽기 전용 화면들)로 이어감.

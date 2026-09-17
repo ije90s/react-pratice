@@ -64,8 +64,8 @@
 - [x] JWT 저장/요청 부착 방식 — Context API로 인증 상태 관리 (신규 개념)
 
 ### Phase 1 — 인증 (폼만 있으면 됨, 의존성 최소)
-- [ ] `/signup` — `POST /user`
-- [ ] `/login` — `POST /user/login`, 성공 시 토큰 저장
+- [x] `/signup` — `POST /user`
+- [x] `/login` — `POST /user/login`, 성공 시 토큰 저장
 
 ### Phase 2 — 읽기 전용 화면 (GET만, 상태 단순)
 - [ ] `/mypage` — `GET /user/me`, `GET participation/mine`
