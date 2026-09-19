@@ -1,39 +1,17 @@
-import { useEffect, useState } from "react";
-import { apiFetch, ApiError } from "../api/client";
-import { useAuth } from "../context/AuthContext";
-import type { PagingMeta, PagingResponse } from "../types/paging";
+import { useState } from "react";
+import useFetch from "../hooks/useFetch";
+import type { PagingResponse } from "../types/paging";
 import { STATUS_LABELS, type Participation } from "../types/participation";
 
 const LIMIT = 10; // 백엔드 검증: limit은 최소 10
 
 function MyParticipationSection() {
-  const { token } = useAuth();
   const [page, setPage] = useState(1);
-  const [items, setItems] = useState<Participation[]>([]);
-  const [meta, setMeta] = useState<PagingMeta | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchMyChallenge(){
-      try{
-        setLoading(true);
-        setError("");
-        const response = await apiFetch<PagingResponse<Participation>>(`/participation/challenge/mine?page=${page}&limit=${LIMIT}`, {token});
-        if(cancelled) return;
-        setItems(response.items);
-        setMeta(response.meta);
-      }catch(err){
-        if(cancelled) return;
-        setError(err instanceof ApiError ? err.message : "알 수 없는 에러가 발생했습니다.");
-      }finally{
-        if(!cancelled) setLoading(false);
-      }
-    }
-    fetchMyChallenge();
-    return () => { cancelled = true; };
-  }, [page, token]);
+  const { data, loading, error } = useFetch<PagingResponse<Participation>>(
+    `/participation/challenge/mine?page=${page}&limit=${LIMIT}`,
+  );
+  const items = data?.items ?? [];
+  const meta = data?.meta ?? null;
 
   let content;
   if (loading) {

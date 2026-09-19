@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
-import { apiFetch, ApiError } from "../api/client";
-import { useAuth } from "../context/AuthContext";
+import { useState } from "react";
+import useFetch from "../hooks/useFetch";
 import type { PagingMeta, PagingResponse } from "../types/paging";
 import { STATUS_LABELS, type Participation } from "../types/participation";
 
@@ -33,40 +32,12 @@ function toRankRow(
 }
 
 function ChallengeRankTab({ challengeId, type }: Props) {
-  const { token } = useAuth();
   const [page, setPage] = useState(1);
-  const [items, setItems] = useState<Participation[]>([]);
-  const [meta, setMeta] = useState<PagingMeta | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchRank() {
-      try {
-        setLoading(true);
-        setError("");
-        const response = await apiFetch<PagingResponse<Participation>>(
-          `/participation/challenge/${challengeId}/rank?page=${page}&limit=${LIMIT}`,
-          { token },
-        );
-        if (cancelled) return;
-        setItems(response.items);
-        setMeta(response.meta);
-      } catch (err) {
-        if (cancelled) return;
-        setError(
-          err instanceof ApiError ? err.message : "알 수 없는 에러가 발생했습니다.",
-        );
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    fetchRank();
-    return () => {
-      cancelled = true;
-    };
-  }, [challengeId, page, token]);
+  const { data, loading, error } = useFetch<PagingResponse<Participation>>(
+    `/participation/challenge/${challengeId}/rank?page=${page}&limit=${LIMIT}`,
+  );
+  const items = data?.items ?? [];
+  const meta = data?.meta ?? null;
 
   if (loading) return <p>불러오는 중...</p>;
   if (error) return <p>{error}</p>;

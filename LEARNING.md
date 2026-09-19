@@ -1310,3 +1310,48 @@ if (!token) {
 **흔한 실수 (직접 겪음) — 1번의 시도:** 첫 시도부터 정확했다. `token`을 구조 분해에 추가, `Hook` 아래에서 조건 분기, `replace` 옵션까지 모두 반영. 지난 단계들과 달리 이번에는 검증에서 추가 수정이 필요한 결함이 없었다. (검증 스크립트 쪽에서는 목록 화면의 `새 챌린지` 링크가 "챌린지"로 매칭되는 셀렉터 모호성 오류가 있었으나 코드 문제가 아니라 테스트 문제.)
 
 **남겨둔 것:** ① 로그인 성공 후 이동 위치가 `/challenges` 고정 — 원래 가려던 주소로 되돌리기(`state={{ from: location }}`)는 다루지 않음. ② 이미 로그인한 사용자가 `/login`에 오면 그대로 로그인 화면을 보여줌(반대 방향 가드 없음). ③ 토큰이 만료·무효인 경우 보호 화면에서 서버가 401을 돌려줄 때는 여전히 화면에 `Unauthorized`만 표시됨(토큰 존재 여부만 확인하고 유효성은 확인하지 않음). ④ 헤더는 최소한의 인라인 스타일만 적용 — 시각적 디자인은 범위 밖. 다음은 `useFetch` 훅 추출과 피드 탭.
+
+
+---
+
+## 18단계: `useFetch` 커스텀 훅 추출 — 다섯 번 반복한 fetch 골격을 한 곳으로
+
+**실습 파일:** `src/hooks/useFetch.ts`(신규). 이 훅으로 바꾼 곳: `ChallengeListPage`, `ChallengeDetailPage`, `ChallengeRankTab`, `MyProfileSection`, `MyParticipationSection`.
+
+**배경:** 13~16단계에서 `useEffect` + `loading`/`error`/데이터 + `cancelled` 가드 + `finally` 골격을 다섯 번 손으로 썼고, 그때마다 같은 종류의 실수를 반복했다(13단계 `finally`의 중복 `setLoading(false)`, 14단계 `null` 분기가 `cancelled` 가드보다 앞에 놓임, 16단계 시작 초기화 `setLoading(true)`/`setError("")` 누락). 8단계에서 배운 커스텀 훅(`useAutoHide`)의 개념을 "반복되는 상태 + 이펙트 묶음"에 적용한 것. 훅이 "시작 초기화 → `await` 직후 `cancelled` → `catch`/`finally` 가드"를 한 곳에서 보장하면 이런 실수가 구조적으로 사라진다.
+
+**배운 개념:**
+
+**1) 훅의 입력은 원시값(`string`) 하나 — 변수는 호출자가 경로에 녹여 넘긴다**
+```ts
+function useFetch<T>(path: string | null): { data: T | null; loading: boolean; error: string }
+
+const { data, loading, error } = useFetch<PagingResponse<Challenge>>(
+  `/challenge?page=${page}&limit=${LIMIT}`,
+);
+```
+문자열은 값이 같으면 같은 것으로 비교되므로 의존성 배열(`[path, token]`)에 그대로 넣을 수 있다. 객체나 함수를 인자로 받으면 매 렌더링마다 새로 만들어져 무한 재요청이 생기기 쉽다. `token`은 훅이 `useAuth()`에서 직접 꺼내므로 호출자가 매번 `{ token }`을 넘기지 않아도 되고, 나중에 401 공통 처리를 넣을 때도 이 훅과 `apiFetch` 두 곳만 손보면 된다.
+
+**2) 제네릭 `T`에 `null`을 포함하면 "서버가 성공 응답으로 돌려준 없음"을 표현할 수 있다**
+```ts
+const { data: challenge, loading, error } = useFetch<Challenge | null>(id ? `/challenge/${id}` : null);
+if (!challenge) return <p>존재하지 않는 챌린지입니다.</p>;  // loading·error가 아닌데 null
+```
+"아직 로딩 전이라 `null`"과 "서버가 `data: null`을 돌려줘서 `null`"은 `loading`으로 구분된다(로딩이 끝났고 에러가 없는데 `null`이면 후자). 14단계에서 이펙트 안에서 `if (!response) setError(...)`로 처리하던 것을 화면 쪽 분기로 옮겼고, 이 경우 `null` 응답에서 `setError`를 호출할 일이 없으니 "가드 앞 상태 변경" 실수가 생길 여지도 사라진다.
+
+**3) `path === null` — "아직 요청할 수 없는 상태"를 값으로 표현**
+`null`이면 요청 없이 `loading`을 `false`로 끝낸다(`loading`의 초기값도 `path !== null`). Hook은 조건부로 호출할 수 없으므로 "요청하지 않을 때"를 인자 값으로 표현하는 방식이다. `ChallengeDetailPage`에서는 `id`가 없을 때 `null`을 넘기고 `if (!id)`로 안내 문구를 보여준다. (라우트가 항상 `:id`를 주므로 브라우저로 이 경로를 직접 재현하지는 못했다.)
+
+**4) 이전 `data`를 남길지 비울지 — 정답은 호출자의 UI가 데이터에 얼마나 기대는가에 달려 있다**
+훅 안에서 요청 시작 시 `setData(null)`로 비우는 버전으로 5곳을 바꿨더니, `MyParticipationSection`에서만 회귀가 났다. 이 화면은 제목의 전체 건수와 이전/다음 버튼을 `meta`(=`data`)에 의존하는데, 요청이 실패하면 `data`가 `null`이라 버튼이 사라져서 사용자가 재시도할 방법이 없었다(페이지 이동 중 제목의 `(12)`도 깜빡임). 지난번 16단계에서 고친 "에러 뒤 회복"이 다시 깨진 것. `setData(null)` 한 줄을 지워 "요청 중·실패 후에도 마지막 성공 데이터를 유지"하는 방식으로 바꾸자 해결됐다(데이터 페칭 라이브러리에서 stale-while-revalidate라고 부르는 발상과 같다). 나머지 화면은 `if (loading)`, `if (error)`를 먼저 검사해서 이전 데이터가 잘못 보이지 않는다.
+
+**5) 리팩터링 뒤에는 이전 동작을 재현하는 회귀 테스트를 다시 돌린다**
+지금까지 만든 Playwright 시나리오(상세 411/999999/abc, 상세 경쟁 상태, 랭킹 값·순위·403, 마이페이지 페이지 이동·로딩·에러 회복·요청 수, 가드·헤더)를 전부 다시 돌려 리팩터링 전과 같은 결과인지 확인했다. 4곳은 그대로였고, 회귀는 이 방법으로만 잡혔다(빌드·린트·타입은 모두 통과했다).
+
+**실습 내용:** `useFetch`의 `useEffect` 본문을 `TODO(human)`으로 작성 — `path`가 `null`이면 요청 없이 종료, 시작 초기화(`loading`, `error`), `await` 직후 `cancelled`, `catch`/`finally` 가드, `ApiError` 분기. 이후 5곳을 훅으로 교체.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** 훅의 골격(시작 초기화, `cancelled` 가드 순서, `finally`, `path === null` 처리)은 모두 정확했고, "이전 `data`를 비울지" 결정에서 `setData(null)`로 비우는 쪽을 택함. 5곳 교체 후 회귀 테스트에서 `MyParticipationSection`의 에러 후 재시도 불가(이전/다음 버튼 사라짐) 발견. 빌드·린트·타입은 통과.
+- **2차 다듬기:** `setData(null)` 삭제 후 같은 시나리오로 재확인 — 에러 뒤에도 버튼이 남고 정상 응답이 오면 목록이 회복됨.
+
+**남겨둔 것:** ① `path`가 `null`로 바뀔 때 이전 `data`/`error`가 그대로 남는다(호출자가 `!id` 같은 조건을 먼저 검사해서 지금은 문제없음). ② 뮤테이션(POST/PATCH/DELETE)은 이 훅이 다루지 않음 — 참가/포기, 기록 추가 등 Phase 4에서 별도 패턴이 필요할 것. ③ 재요청(수동 새로고침)을 하는 방법이 없음 — 필요해지면 `refetch` 반환값이나 키 증가 방식을 고려. 다음은 피드 탭을 처음부터 이 훅으로 만들고, 그다음 401 공통 처리와 `LoginPage`의 `replace`(SCREEN_PLAN 보완 과제).
