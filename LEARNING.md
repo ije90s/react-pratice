@@ -1173,3 +1173,43 @@ Playwright로 `999999` 응답만 3초 지연시키고, 새로고침 없이 클�
 - **2차 다듬기:** `if (cancelled) return;`을 `null` 분기보다 앞으로 옮기고 Playwright로 재현·검증.
 
 **남겨둔 것:** `abc` 같은 형식 오류 메시지가 서버의 영어 원문 그대로 노출됨(프론트에서 `Number(id)` 검증으로 걸러 한국어 메시지를 보여줄지는 미정). 랭킹·피드 탭은 자리 표시만 있음. 다음은 랭킹 탭(`GET .../participation/challenge/:id/rank`)과 피드 탭(`GET /feed/challenge/:id/feeds`), 그리고 `/mypage`.
+
+
+---
+
+## 15단계: challenge-api 연동 ⑥ — 랭킹 탭 (탭 컴포넌트 분리, 표시용 변환 함수)
+
+**실습 파일:** `src/components/ChallengeRankTab.tsx` (`ChallengeDetailPage.tsx`에서 `tab === "rank"`일 때 마운트). 공용 타입 `src/types/paging.ts`(목록 화면에서 이동), `src/types/participation.ts` 신설.
+
+**배경:** 상세 화면의 두 번째 탭. 백엔드 `GET /participation/challenge/:id/rank`는 목록과 같은 `{ items, meta }` 모양이지만 몇 가지 특징이 있다. ① **참가자만 조회 가능**(미참가 시 `403 "참가하지 않았습니다."`), ② 항목에 **사용자 정보가 없고**(`id`, `score`, `challenge_count`, `status`, `complete_date`뿐) **순위도 서버가 주지 않는다**, ③ 챌린지 `type`이 `0`이면 `score`, 아니면 `challenge_count` 기준으로 정렬, ④ 서버가 상위 100위까지만 노출(`meta.total`은 최대 100). `status`는 `0` 진행 중 / `1` 완료 / `2` 포기.
+
+**배운 개념:**
+
+**1) 탭 = 조건부 렌더링 = 공짜 lazy fetch**
+```tsx
+{tab === "rank" && <ChallengeRankTab challengeId={challenge.id} type={challenge.type} />}
+```
+탭 컴포넌트는 그 탭을 처음 열 때 마운트되어 그때 요청하고, 다른 탭으로 가면 언마운트된다. 따로 "탭이 열렸을 때만 요청"하는 로직을 짤 필요가 없다. 대신 탭을 오갈 때마다 다시 요청하므로, 캐싱이 필요하면 별도로 설계해야 한다.
+
+**2) 페이지 안의 fetch 골격을 컴포넌트로 옮겨도 그대로 재사용된다**
+`useEffect` + `loading`/`error`/데이터 + `cancelled` cleanup + `catch`/`finally` 가드는 13·14단계와 같은 골격이다. 의존성 배열이 `[challengeId, page, token]`으로 늘었을 뿐이다. 세 번째 복붙이므로, 한 화면(피드 탭이나 `/mypage`)을 더 만들면 `useFetch` 같은 커스텀 훅으로 뽑을 신호다.
+
+**3) 서버가 주지 않는 값(순위)은 프론트가 페이지 위치로 계산한다 — 1-based 페이지의 오프셋은 `page - 1`**
+```ts
+rank: (meta.page - 1) * meta.limit + index + 1
+```
+서버도 `(page - 1) * limit`로 오프셋을 계산하므로 같은 공식을 써야 화면 순위와 서버 순위가 일치한다. `meta.page`(서버 응답)를 쓴 이유는, 컴포넌트 상태 `page`는 요청을 보낸 시점에 이미 바뀌었을 수 있지만 `meta.page`는 지금 화면의 `items`와 항상 같은 응답에서 온 값이기 때문이다.
+
+**4) 화면 표시용 변환은 하나의 순수 함수로 — 그리고 한 조건은 한 곳에서 분기**
+`toRankRow(item, index, meta, type)`이 `RankRow`(순위·값·단위·상태 라벨)를 돌려준다. `value`와 `unit` 모두 `type === 0`으로 분기하는데, 두 분기가 따로 놀면 어긋날 수 있다(이번에 실제로 그랬다 — 아래 참고). 상태 라벨은 `Record<number, string>` 매핑에 `?? ""` 폴백을 두어 서버가 예상 밖의 값을 주더라도 화면이 깨지지 않게 했다.
+
+**5) 실제 데이터로 화면을 봐야 드러나는 버그 — 검증용 데이터는 "값이 서로 달라야" 의미가 있다**
+테스트 계정을 점수형(410)·횟수형(411) 챌린지에 참가시키고 `score=7`, `challenge_count=3`처럼 **일부러 서로 다른 값**을 넣었다. 부하 테스트 데이터로 이미 참가자 100명(10페이지)이 있어 1·2페이지 경계를 확인하기 좋았다. 미참가 챌린지(409)는 서버 메시지 "참가하지 않았습니다."가 그대로 표시되고 탭 UI는 유지되는 것도 확인했다.
+
+**실습 내용:** `toRankRow`를 `TODO(human)`으로 작성 — ① 페이지가 넘어가도 이어지는 순위, ② 챌린지 유형에 따라 `score`("점") 또는 `challenge_count`("회") 선택, ③ `status` 0/1/2 → "진행 중"/"완료"/"포기" 변환. `Playwright`로 410·411의 1·2페이지 첫/끝 항목을 확인.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** 빌드·린트·타입 모두 통과했지만 화면에서 두 가지 버그가 드러남. (a) `meta.page * meta.limit + index + 1` — `page`가 1부터 시작해서 1페이지 첫 항목이 `1위`가 아니라 `11위`로 나옴(`page - 1` 누락). (b) `value`는 항상 `item.score`인데 `unit`만 `type`으로 분기 — 횟수형 챌린지에서 `1위 500회`가 아니라 `11위 0회`로 표시됨(값과 단위의 분기 불일치).
+- **2차 다듬기:** `(meta.page - 1)`로 수정하고 `value`도 `type === 0 ? item.score : item.challenge_count`로 통일, 상태 라벨에 `?? ""` 폴백 추가. Playwright로 재확인해 410은 `1위 10000점`~, 411은 `1위 500회`~, 2페이지는 `11위`부터 시작하는 것까지 확인.
+
+**남겨둔 것:** 미참가 시 안내가 서버 메시지(`403`)뿐이고 "참가하기" 버튼은 없다(Phase 4에서 참가/포기 버튼 추가 예정). 내 순위(`GET .../rank/me`)는 아직 표시하지 않는다. 폴백 `?? ""`는 빈 라벨을 만들 뿐이라 "알 수 없음" 같은 명시적 표시로 바꿀지는 미정. 다음은 피드 탭(`GET /feed/challenge/:id/feeds`)과 `/mypage`.

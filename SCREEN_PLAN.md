@@ -71,7 +71,7 @@
 - [ ] `/mypage` — `GET /user/me`, `GET participation/mine`
 - [x] `/challenges` 목록 — `GET /challenge` (페이지네이션)
 - [x] `/challenges/:id` 상세 탭 (읽기만) — `GET /challenge/:id`
-- [ ] `/challenges/:id` 랭킹 탭 — `GET .../rank`
+- [x] `/challenges/:id` 랭킹 탭 — `GET .../rank`
 - [ ] `/challenges/:id` 피드 탭 — `GET /feed/challenge/:id/feeds`
 
 ### Phase 3 — 쓰기 폼 (공용 컴포넌트)

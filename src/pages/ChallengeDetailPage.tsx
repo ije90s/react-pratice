@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiFetch, ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
+import ChallengeRankTab from "../components/ChallengeRankTab";
 import type { Challenge } from "../types/challenge";
 
 type Tab = "detail" | "rank" | "feed";
@@ -80,7 +81,9 @@ function ChallengeDetailPage() {
           </dl>
         </section>
       )}
-      {tab === "rank" && <p>랭킹 (다음 단계)</p>}
+      {tab === "rank" && (
+        <ChallengeRankTab challengeId={challenge.id} type={challenge.type} />
+      )}
       {tab === "feed" && <p>피드 (다음 단계)</p>}
     </div>
   );

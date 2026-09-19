@@ -3,18 +3,7 @@ import { Link } from "react-router-dom";
 import { apiFetch, ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { Challenge } from "../types/challenge";
-
-interface PagingMeta {
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
-interface PagingResponse<T> {
-  items: T[];
-  meta: PagingMeta;
-}
+import type { PagingMeta, PagingResponse } from "../types/paging";
 
 const LIMIT = 10; // 백엔드 검증: limit은 최소 10
 
