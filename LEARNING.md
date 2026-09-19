@@ -1064,3 +1064,65 @@ return envelope.data;  // 이미 T로 추론됨 — as T 불필요
 - **3차 다듬기:** `envelope.data`가 이미 `T`로 추론되므로 마지막 `return envelope.data as T;`의 `as T`가 불필요해짐 — 제거.
 
 다음은 `SCREEN_PLAN.md` 체크리스트의 Phase 2(읽기 전용 화면들)로 이어감.
+
+---
+
+## 13단계: challenge-api 연동 ④ — 챌린지 목록 (첫 GET 화면 + 페이지네이션)
+
+**실습 파일:** `src/pages/ChallengeListPage.tsx`
+
+**배경:** Phase 2(읽기 전용 화면)의 첫 항목. 백엔드 `GET /challenge?page=&limit=`는 12단계의 envelope를 벗기고 나면 `{ items, meta: { total, page, limit, totalPages } }` 형태를 돌려준다. `limit`은 서버 검증상 최소 10이고, 서버가 `end_date >= 오늘`인 챌린지만 돌려주므로 종료된 챌린지는 목록에 나오지 않는다(프론트 버그가 아니라 서버 정책).
+
+**배운 개념:**
+
+**1) 목록 응답 모양을 제네릭으로 표현 — `PagingResponse<T>`**
+```ts
+interface PagingResponse<T> {
+  items: T[];
+  meta: PagingMeta;
+}
+apiFetch<PagingResponse<Challenge>>(`/challenge?page=${page}&limit=${LIMIT}`, { token });
+```
+12단계의 `ApiResponseEnvelope<T>`와 같은 방식이다. 랭킹·피드 목록도 같은 모양이라 이 타입을 그대로 재사용할 수 있다.
+
+**2) `useEffect` + 로딩/에러/데이터 세 가지 상태**
+`useEffect`의 콜백 자체는 `async`가 될 수 없어서 안에서 async 함수를 따로 정의해 호출한다. 의존성 배열에 `page`를 넣으면 "이전/다음" 버튼은 `setPage`만 호출하고, 데이터를 다시 가져오는 일은 이펙트가 맡는다. 성공·실패 양쪽에서 로딩이 꺼지도록 `setLoading(false)`는 `finally`에 둔다.
+
+**3) 비동기 이펙트의 경쟁 상태와 cleanup — 요청을 "취소"하는 게 아니라 결과를 "무시"한다**
+```tsx
+useEffect(() => {
+  let cancelled = false;
+  async function fetchChallenges() {
+    try {
+      const response = await apiFetch(...);
+      if (cancelled) return;
+      setChallenges(response.items);
+    } catch (err) {
+      if (cancelled) return;
+      setError(...);
+    } finally {
+      if (!cancelled) setLoading(false);
+    }
+  }
+  fetchChallenges();
+  return () => { cancelled = true; };
+}, [page, token]);
+```
+이펙트가 실행될 때마다 `cancelled`는 별개의 변수로 만들어지고, cleanup은 "바로 이전 실행이 붙잡고 있던 변수"만 `true`로 바꾼다. 그래서 먼저 보낸 요청의 응답이 나중에 도착해도 그 응답은 상태를 덮어쓰지 못한다. 요청 자체는 서버까지 가서 처리되고 응답도 도착한다(취소가 아니라 무시). 요청까지 끊으려면 `AbortController`를 `apiFetch`에 넘기는 확장이 필요하다. `await` 이후의 `set*`은 성공·`catch`·`finally` 세 곳 모두에 가드가 필요하다.
+
+**4) 경쟁 상태는 대조군과 함께 검증해야 의미가 있다**
+Playwright(스크래치패드에 `playwright-core`만 설치, 시스템 Chrome 사용)로 `page=2` 응답만 3초 지연시키고 "다음"을 연속 클릭했다.
+- 대조군(cleanup 제거): 최종 화면 `2 / 3` — page 3을 요청했는데 늦게 온 page 2 응답이 덮어씀.
+- 현재 코드(cleanup 있음): 최종 화면 `3 / 3`.
+
+방어를 끈 버전에서 버그가 재현돼야 "테스트가 버그를 잡을 수 있다"와 "현재 코드가 막는다"를 함께 증명할 수 있다. 한편 현재 UI는 `if (loading) return ...` 때문에 요청 중 버튼이 사라져서 실제로는 연타 자체가 불가능하다. 검증할 때만 이 게이트를 임시로 완화했고 끝난 뒤 되돌렸다. 즉 cleanup은 지금 당장 필요한 방어라기보다 UI가 바뀌어도 안전하도록 걸어둔 것이다.
+
+**실습 내용:** `useEffect` 안에 ① `page` 변경 시 `apiFetch<PagingResponse<Challenge>>` 호출, ② `loading`/`error` 초기화와 `finally`에서 로딩 해제, ③ `ApiError` 여부로 메시지 분기(`LoginPage`와 동일 패턴), ④ 경쟁 상태 방어용 `cancelled` cleanup을 `TODO(human)`으로 작성. 이후 로컬 `challenge-api`와 dev 서버를 띄워 `/signup` → `/login` → `/challenges`를 브라우저로 확인했다.
+
+**흔한 실수 (직접 겪음) — 4번의 시도:**
+- **1차 시도:** 로딩·에러 처리까지 포함해 기본 fetch 로직은 처음부터 맞게 작성.
+- **2차 시도:** cleanup(`cancelled`)을 추가했지만 가드가 `try`의 성공 경로에만 있어서, `catch`(오래된 요청의 에러 표시)와 `finally`(로딩 조기 해제)는 여전히 무방비.
+- **3차 시도:** `catch`/`finally`에 가드를 추가하면서 `finally` 안에 `setLoading(false);`를 조건 없이 한 줄 더 남김 — 문법적으로 유효해서 빌드·린트가 못 잡았고, 코드 리뷰로 발견. 이 줄 때문에 `if (!cancelled)` 조건이 무력화되어 있었다.
+- **4차 다듬기:** 중복 줄 삭제 후 Playwright로 실제 동작 검증.
+
+**남겨둔 것:** 로그아웃 상태(토큰 없음)에서 `/challenges`에 들어가면 401 에러 메시지만 표시하고 `/login`으로 보내지 않는다. 인증 가드(보호된 라우트)는 별도 주제로 다룰 것. 다음은 Phase 2의 `/mypage`, 그리고 `/challenges/:id` 상세·랭킹·피드 탭으로 이어감.

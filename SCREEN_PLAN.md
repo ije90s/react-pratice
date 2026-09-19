@@ -69,7 +69,7 @@
 
 ### Phase 2 — 읽기 전용 화면 (GET만, 상태 단순)
 - [ ] `/mypage` — `GET /user/me`, `GET participation/mine`
-- [ ] `/challenges` 목록 — `GET /challenge` (페이지네이션)
+- [x] `/challenges` 목록 — `GET /challenge` (페이지네이션)
 - [ ] `/challenges/:id` 상세 탭 (읽기만) — `GET /challenge/:id`
 - [ ] `/challenges/:id` 랭킹 탭 — `GET .../rank`
 - [ ] `/challenges/:id` 피드 탭 — `GET /feed/challenge/:id/feeds`
