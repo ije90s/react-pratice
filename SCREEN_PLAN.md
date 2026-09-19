@@ -68,7 +68,7 @@
 - [x] `/login` — `POST /user/login`, 성공 시 토큰 저장
 
 ### Phase 2 — 읽기 전용 화면 (GET만, 상태 단순)
-- [ ] `/mypage` — `GET /user/me`, `GET participation/mine`
+- [x] `/mypage` — `GET /user/me`, `GET participation/mine`
 - [x] `/challenges` 목록 — `GET /challenge` (페이지네이션)
 - [x] `/challenges/:id` 상세 탭 (읽기만) — `GET /challenge/:id`
 - [x] `/challenges/:id` 랭킹 탭 — `GET .../rank`

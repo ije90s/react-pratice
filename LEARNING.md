@@ -1213,3 +1213,54 @@ rank: (meta.page - 1) * meta.limit + index + 1
 - **2차 다듬기:** `(meta.page - 1)`로 수정하고 `value`도 `type === 0 ? item.score : item.challenge_count`로 통일, 상태 라벨에 `?? ""` 폴백 추가. Playwright로 재확인해 410은 `1위 10000점`~, 411은 `1위 500회`~, 2페이지는 `11위`부터 시작하는 것까지 확인.
 
 **남겨둔 것:** 미참가 시 안내가 서버 메시지(`403`)뿐이고 "참가하기" 버튼은 없다(Phase 4에서 참가/포기 버튼 추가 예정). 내 순위(`GET .../rank/me`)는 아직 표시하지 않는다. 폴백 `?? ""`는 빈 라벨을 만들 뿐이라 "알 수 없음" 같은 명시적 표시로 바꿀지는 미정. 다음은 피드 탭(`GET /feed/challenge/:id/feeds`)과 `/mypage`.
+
+
+---
+
+## 16단계: challenge-api 연동 ⑦ — 마이페이지 (병렬 요청 → 조각 분리 + 페이지네이션)
+
+**실습 파일:** `src/pages/MyPage.tsx`(조합 전용), `src/components/MyProfileSection.tsx`, `src/components/MyParticipationSection.tsx`. 공용 타입 `src/types/user.ts` 신설, `STATUS_LABELS`를 `src/types/participation.ts`로 이동(랭킹 탭과 공유).
+
+**배경:** Phase 2의 마지막 화면 중 하나. `GET /user/me`는 `{ id, email }`로 단순하지만, `GET /participation/challenge/mine`은 항목이 `{ id, score, challenge_count, status, complete_date }`뿐이라 **어느 챌린지의 참가 기록인지 알 수 있는 필드(`challenge_id`, 제목)가 없다**(백엔드가 `challenge` 관계를 조회하지도, DTO에 담지도 않음). 그래서 "내 참가 챌린지 목록"은 제목·상세 링크 없이 점수/횟수/상태만 표시하는 형태로 만들었다. 백엔드까지 고칠지 물었고, 이 프로젝트의 범위(프론트)를 지키기로 해서 **백엔드 수정 요청 항목으로만 남겼다.**
+
+**배운 개념:**
+
+**1) 서로 의존하지 않는 요청은 `Promise.all`로 동시에 — 하지만 꼭 필요한 건 아니다**
+```tsx
+const [userResponse, participationResponse] = await Promise.all([
+  apiFetch<User>("/user/me", { token }),
+  apiFetch<PagingResponse<Participation>>(`/participation/challenge/mine?page=1&limit=${LIMIT}`, { token }),
+]);
+```
+`await`를 차례로 걸면 응답 시간이 합산되지만 `Promise.all`은 둘을 동시에 보내 더 느린 쪽 시간만큼만 걸린다(브라우저에서 두 요청의 시작 시각 차이가 0ms인 것으로 확인). 배열의 각 결과는 구조 분해로 받고, 각 요소의 타입도 `apiFetch<T>`의 `T`로 따로 추론된다. 대신 하나라도 실패하면 즉시 거부되어 화면 전체가 에러가 된다. 그러나 이 화면의 두 조각은 독립적이라 이 정책은 과하다.
+
+**2) 독립적인 화면 조각은 컴포넌트로 분리하면 상태 소유가 구조로 드러난다**
+`MyProfileSection`(내 정보)과 `MyParticipationSection`(참가 기록)이 각자 fetch와 `loading`/`error`를 갖는다. 이렇게 하면
+- 한쪽이 실패해도 다른 쪽은 그대로 보인다(부분 성공이 별도 코드 없이 생긴다).
+- `page`는 참가 기록 조각만의 상태라, 페이지를 넘겨도 `/user/me`는 다시 요청되지 않는다(페이지를 두 번 이동한 뒤 추가 `/user/me` 요청 0건으로 확인).
+- 병렬 요청에 `Promise.all`이 필수는 아니다. 두 이펙트는 각자 실행되므로 요청은 여전히 동시에 나간다.
+한 컴포넌트에 합쳐 두면 "무엇이 무엇을 다시 요청하게 하는가"를 의존성 배열로 일일이 통제해야 한다.
+
+**3) `useEffect` 안의 fetch는 "처음 실행"과 "재실행"의 초기화 요구가 다르다**
+```tsx
+try {
+  setLoading(true);   // 재실행 때 로딩을 다시 켠다
+  setError("");       // 이전 에러를 지운다
+  const response = await apiFetch(...);
+```
+처음에는 `useState(true)`가 로딩을 대신 켜 주지만, `page`가 바뀌어 재실행될 때는 이펙트가 직접 되돌려야 한다. 빠지면 두 가지가 생긴다. ① 페이지 이동 중 로딩 표시가 없고 이전 페이지 목록이 그대로 보이다가 갑자기 바뀐다(이전/다음 버튼도 계속 보여서 연타 보호도 사라진다). ② 한 번 세팅된 `error`가 지워지지 않고, 렌더링이 `error`를 `items`보다 먼저 검사하므로 이후 요청이 성공해도 에러 화면이 남는다. 새로고침 말고는 회복 불가.
+
+**4) StrictMode(개발 모드)의 이중 실행이 `cancelled` cleanup을 실제로 검증해 준다**
+`main.tsx`가 `<StrictMode>`라서 개발 모드에서는 이펙트가 "실행 → cleanup → 재실행"된다. 그래서 초기 로드에서 `/user/me`와 `mine`이 각각 두 번씩 나갔다. 첫 실행은 `cancelled = true`로 결과가 무시되고 두 번째 실행의 결과만 반영된다. 운영 빌드에서는 한 번만 나간다.
+
+**5) 값이 서로 다른 검증 데이터와 참가 기록 여러 건이 필요한 화면은 테스트 데이터를 직접 만든다**
+페이지 이동을 보려면 참가 기록이 11건 이상이어야 해서, 테스트 챌린지 `[mypage-test]` 10개(id 1163~1172)를 만들고 참가시켰다(총 12건, 2페이지). 로딩 표시와 에러 회복은 `page.route`로 응답을 지연시키거나 한 번만 `abort`시켜 재현했다.
+
+**실습 내용:** 처음에는 `MyPage` 한 컴포넌트에서 `Promise.all`로 두 요청을 동시에 보내는 `useEffect`를 `TODO(human)`으로 작성 → 이후 "하나라도 성공하면 보여주는 게 낫지 않은가", "페이지가 항상 1이어야 하는가"라는 질문에서 출발해 조각 분리 + 참가 기록 페이지네이션(옵션 C)으로 재구성. `MyParticipationSection`의 `page`에 반응하는 fetch를 `TODO(human)`으로 작성.
+
+**흔한 실수 (직접 겪음) — 3번의 시도:**
+- **1차 시도(`Promise.all` 한 컴포넌트):** 동작은 맞았지만 `LIMIT`을 선언만 하고 쓰지 않아 빌드가 실패(`TS6133`). 이를 고치다 URL이 `?page=&limit=${LIMIT}`로 **`page` 값이 빠지는 실수**가 생김 — 서버는 빈 값을 `0`으로 변환해 `@Min(1)`에서 400을 돌려줄 것. URL을 문자열로 조립하면 값 누락이 타입 검사에 안 걸린다.
+- **2차 시도(조각 분리 후):** `cancelled` 가드와 `catch`/`finally`는 정확했지만 시작 부분의 `setLoading(true)`/`setError("")`가 빠짐. 빌드·린트·타입 통과, 첫 페이지 로딩도 정상이라 "다른 페이지로 이동"과 "에러 뒤 회복"을 실제로 해 봐야만 드러남.
+- **3차 다듬기:** 두 줄 추가 후 같은 브라우저 시나리오 재실행 — 응답 대기 중 "불러오는 중..." 표시, 에러 뒤 정상 응답 시 목록 회복, 페이지 이동 시 `/user/me` 추가 요청 0건 확인.
+
+**남겨둔 것:** ① 참가 기록에 챌린지 제목·링크가 없음(백엔드가 `challenge_id`/제목을 응답에 담아야 해결 — 백엔드 수정 요청 항목). ② 로그아웃 후(토큰 `null`) 화면에 `Unauthorized`만 표시되고 `/login`으로 이동하지 않음(인증 가드는 별도 주제). ③ 목록·상세·랭킹·마이페이지가 같은 fetch 골격을 반복함 — 이번 세션에서 겪은 실수 유형(`finally` 중복, 분기 순서, 시작 초기화 누락)이 모두 이 반복에서 나왔으므로 `useFetch` 훅 추출을 다음 후보로. ④ 테스트 계정(`list-test-17975@example.com`)에 참가 기록 12건이 남아 있음(참가 삭제 API 없음). 다음은 피드 탭(`GET /feed/challenge/:id/feeds`).

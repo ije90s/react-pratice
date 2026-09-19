@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { apiFetch, ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import type { PagingMeta, PagingResponse } from "../types/paging";
-import type { Participation } from "../types/participation";
+import { STATUS_LABELS, type Participation } from "../types/participation";
 
 interface Props {
   challengeId: number;
@@ -15,12 +15,6 @@ interface RankRow {
   unit: string;
   statusLabel: string;
 }
-
-const STATUS_LABELS: Record<number, string> = {
-  0: "진행 중",
-  1: "완료",
-  2: "포기",
-};
 
 const LIMIT = 10; // 백엔드 검증: limit은 최소 10 (랭킹은 서버가 상위 100위까지만 노출)
 
