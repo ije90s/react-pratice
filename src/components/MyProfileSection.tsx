@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import type { User } from "../types/user";
 
 function MyProfileSection() {
-  const { token, logout } = useAuth();
+  const { token } = useAuth();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -39,7 +39,6 @@ function MyProfileSection() {
       {loading && <p>불러오는 중...</p>}
       {!loading && error && <p>{error}</p>}
       {!loading && !error && user && <p>{user.email}</p>}
-      <button onClick={logout}>로그아웃</button>
     </section>
   );
 }

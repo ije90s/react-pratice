@@ -62,6 +62,7 @@
 - [x] 라우터 설치 — `react-router` (결정 완료)
 - [x] API 클라이언트 공통 모듈 — fetch 래퍼 직접 작성 (결정 완료), base URL은 `challenge-api` 접속 정보 확정 전까지 환경변수 placeholder
 - [x] JWT 저장/요청 부착 방식 — Context API로 인증 상태 관리 (신규 개념)
+- [x] 공용 레이아웃(헤더) + 인증 가드 — 레이아웃 라우트(`AppLayout`)에서 미로그인 시 `/login` 리다이렉트 (Phase 2 도중 추가)
 
 ### Phase 1 — 인증 (폼만 있으면 됨, 의존성 최소)
 - [x] `/signup` — `POST /user`
