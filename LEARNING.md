@@ -1126,3 +1126,50 @@ Playwright(스크래치패드에 `playwright-core`만 설치, 시스템 Chrome �
 - **4차 다듬기:** 중복 줄 삭제 후 Playwright로 실제 동작 검증.
 
 **남겨둔 것:** 로그아웃 상태(토큰 없음)에서 `/challenges`에 들어가면 401 에러 메시지만 표시하고 `/login`으로 보내지 않는다. 인증 가드(보호된 라우트)는 별도 주제로 다룰 것. 다음은 Phase 2의 `/mypage`, 그리고 `/challenges/:id` 상세·랭킹·피드 탭으로 이어감.
+
+
+---
+
+## 14단계: challenge-api 연동 ⑤ — 챌린지 상세 탭 (`useParams`, `data: null` 처리)
+
+**실습 파일:** `src/pages/ChallengeDetailPage.tsx` (공용 타입 `src/types/challenge.ts` 신설)
+
+**배경:** Phase 2의 두 번째 화면. 목록과 골격(`useEffect` + 로딩/에러/데이터 + `cancelled` cleanup)은 같지만, 이번엔 URL 파라미터로 어떤 리소스를 가져올지 결정하고, 백엔드가 **존재하지 않는 id에도 404가 아니라 `200 OK` + `data: null`로 응답**한다는 새 조건이 있다. 탭(상세 | 랭킹 | 피드)은 `useState<Tab>`으로 전환하며, 이번 단계에서는 상세 탭만 구현하고 나머지는 자리 표시만 둔다.
+
+**배운 개념:**
+
+**1) `useParams()`는 항상 `string | undefined`를 돌려준다**
+```tsx
+const { id } = useParams(); // /challenges/:id 의 id
+```
+라우트 정의(`/challenges/:id`)와 타입 시스템은 연결돼 있지 않아서, 파라미터는 무조건 문자열(또는 `undefined`)이다. 그래서 `id`가 없는 경우를 직접 걸러야 하고, 숫자여야 한다는 제약도 프론트가 스스로 검증하거나 서버 에러(`/challenges/abc` → 400 `Validation failed (numeric string is expected)`)에 맡겨야 한다. 이번에는 빈 값만 프론트에서 걸러 "잘못된 접근입니다."를 보여주고, 형식 오류는 서버 메시지를 그대로 노출했다(영어 원문이 보이는 점은 나중에 다룰 주제).
+
+**2) 성공 응답(`200`) 안에 숨은 "없음" — `ApiError`로는 잡히지 않는다**
+```tsx
+const response = await apiFetch<Challenge | null>(`/challenge/${id}`, { token });
+if (cancelled) return;
+if (!response) { setError("존재하지 않는 챌린지입니다."); return; }
+setChallenge(response);
+```
+`apiFetch`는 `!res.ok`일 때만 `ApiError`를 던지므로, 서버가 `200 + data: null`을 돌려주면 그냥 성공으로 통과한다. 제네릭을 `Challenge | null`로 주면 `null` 체크를 빼먹을 때 타입 오류로 알려주는 것까지가 타입 시스템이 해주는 일이고, 서버가 그 모양으로 응답한다는 보장은 12단계와 마찬가지로 실제 요청으로만 확인할 수 있다(`curl`로 `/challenge/999999`를 쳐서 발견).
+
+**3) 경쟁 상태 가드는 `await` 직후 가장 먼저 — 가드 앞에 상태를 건드리는 분기를 두면 그게 새 구멍이 된다**
+`null` 분기를 `cancelled` 확인보다 앞에 두면, `/challenges/999999` → `/challenges/411`로 이동했을 때 늦게 도착한 999999의 `null` 응답이 `setError`를 호출해 정상 화면을 "존재하지 않는 챌린지입니다."로 덮어쓴다. 순서만 `if (cancelled) return;` → `if (!response) ...`로 바꾸면 막힌다. 13단계의 `catch`/`finally` 가드 누락과 같은 유형이다.
+
+**4) 경쟁 상태를 SPA 내비게이션으로 재현하기**
+Playwright로 `999999` 응답만 3초 지연시키고, 새로고침 없이 클라이언트 라우팅(`history.pushState` + `popstate`)으로 `411`로 이동했다.
+- 대조군(`null` 분기가 가드보다 앞): 최종 화면 "존재하지 않는 챌린지입니다." — 오래된 응답이 덮어씀.
+- 현재 코드(가드가 먼저): 411의 상세 정보가 유지됨.
+
+13단계와 마찬가지로 대조군에서 먼저 버그가 재현돼야 검증의 의미가 있다. 다만 이번엔 "같은 컴포넌트가 다른 `id`로 다시 실행되는" 경우라 페이지 전체 새로고침(`goto`)으로는 재현되지 않고, 클라이언트 내비게이션이 필요했다.
+
+**5) 공용 타입 분리 — `src/types/challenge.ts`**
+목록과 상세가 같은 `Challenge` 모양을 쓰므로 한 파일로 뽑아 어긋남을 막았다. `type` 필드는 값의 의미(점수형/횟수형 등)가 백엔드 코드에 정의돼 있지 않아 원본 숫자 그대로 표시한다.
+
+**실습 내용:** `useEffect` 안에 ① `id` 유효성 검사(빈 값 → "잘못된 접근입니다."), ② `apiFetch<Challenge | null>` 호출, ③ `null`이면 "존재하지 않는 챌린지입니다." 에러 세팅, ④ `cancelled` cleanup과 `catch`/`finally` 가드를 `TODO(human)`으로 작성. `/challenges/411`(정상), `/challenges/999999`(없음), `/challenges/abc`(형식 오류), 탭 전환을 브라우저로 확인.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** 목록 화면에서 배운 `catch`/`finally` 가드, `id` 검증, `null` 처리는 모두 반영했으나 `null` 분기를 `cancelled` 확인보다 앞에 둠 — 문법·타입·린트 모두 통과하고 단일 요청에서는 정상 동작해서, 이동 중 늦게 도착한 응답이라는 특수한 타이밍에서만 드러나는 버그.
+- **2차 다듬기:** `if (cancelled) return;`을 `null` 분기보다 앞으로 옮기고 Playwright로 재현·검증.
+
+**남겨둔 것:** `abc` 같은 형식 오류 메시지가 서버의 영어 원문 그대로 노출됨(프론트에서 `Number(id)` 검증으로 걸러 한국어 메시지를 보여줄지는 미정). 랭킹·피드 탭은 자리 표시만 있음. 다음은 랭킹 탭(`GET .../participation/challenge/:id/rank`)과 피드 탭(`GET /feed/challenge/:id/feeds`), 그리고 `/mypage`.

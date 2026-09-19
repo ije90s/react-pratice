@@ -2,17 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
-
-interface Challenge {
-  id: number;
-  type: number;
-  mininum_count: number;
-  title: string;
-  content: string;
-  start_date: string;
-  end_date: string;
-  author_id: number | null;
-}
+import type { Challenge } from "../types/challenge";
 
 interface PagingMeta {
   total: number;
