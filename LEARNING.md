@@ -1485,3 +1485,68 @@ API는 `/challenge`(단수), 프론트 라우트는 `/challenges`(복수)다. �
 - **2차 수정:** `/challenges/...`로 고쳐 7개 시나리오 모두 통과.
 
 **남겨둔 것:** ① 상세 화면에 "수정" 버튼이 없다. 내 글일 때만 보이려면 `GET /user/me`로 내 `id`를 알아야 해서 Phase 5(삭제 버튼)와 함께 처리한다(SCREEN_PLAN에 등록). ② 제출 후 상세로 이동할 때 잠깐 로딩이 보인다. ③ 제출 중 뒤로가기 등으로 화면을 떠나면 늦게 온 응답의 `navigate`가 실행될 수 있다(취소 처리는 안 함). ④ `type` 값(0/1)의 라벨이 폼(점수형/횟수형), 랭킹 탭(점/회), 상세 화면(숫자 그대로)에 흩어져 있다 — 상수로 모을지 고민할 것. 다음은 피드 작성/수정 폼(이미지 최대 3장, multipart).
+
+---
+
+## 22단계: 피드 작성/수정 폼 + 탭을 URL 쿼리로 — `FormData` 전송과 `useSearchParams`
+
+**실습 파일:** `src/components/FeedForm.tsx`(신규), `src/pages/FeedFormPage.tsx`(구현), `src/api/client.ts`(FormData 지원), `src/types/feed.ts`(`FeedInput`), `src/components/ChallengeFeedTab.tsx`("피드 작성" 링크), `src/pages/ChallengeDetailPage.tsx`(탭을 `?tab=`으로).
+
+**배경:** Phase 3의 마지막 폼. 챌린지 폼과 구조는 같지만 이미지(최대 3장, 파일당 5MB, jpg/png)를 multipart로 보내야 해서 `apiFetch`가 JSON만 가정하던 부분을 손봤다. 저장 후에는 `/challenges/:id?tab=feed`로 이동하도록 정해서, 챌린지 상세의 탭을 URL 쿼리로 옮기는 작업까지 이어졌다. 백엔드 규칙: 작성은 `POST /feed`(`challenge_id` 필수), 수정은 `PATCH /feed/:feedId`(`challenge_id` 허용 안 함), 수정 시 새 이미지를 보내면 전체 교체·안 보내면 기존 유지.
+
+**배운 개념:**
+
+**1) `FormData`를 보낼 때는 `Content-Type`을 직접 지정하지 않는다**
+```ts
+...(body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
+```
+브라우저가 파일 경계(boundary)를 포함한 헤더를 자동으로 넣는다. `apiFetch`의 한 곳만 바꿨는데도 401 공통 처리(20단계)는 그대로 재사용됐다. 모든 요청이 지나가는 곳에 정책을 둔 이점.
+
+**2) `FormData`는 타입이 없어서 "필수 필드 누락"과 "허용 안 되는 필드"를 컴파일러가 못 잡는다**
+JSON 본문에 `ChallengeInput` 타입을 쓰던 챌린지 폼과 다른 점이다. 작성에서 `challenge_id`를 빼먹으면 서버가 400을 주고, 수정에서 `challenge_id`를 보내면 서버가 `property challenge_id should not exist`(400)를 준다(백엔드가 `forbidNonWhitelisted`). 그래서 이런 요청은 브라우저로 실제로 보내보는 검증이 중요하다.
+
+**3) 공용 폼은 한 모드를 고치다 다른 모드가 깨지기 쉽다 — 검사는 값이 필요한 곳에 붙인다**
+`if (!challengeId) throw` 같은 검사를 앞쪽에 두고 `challenge_id`를 항상 보내게 했다가 수정 모드가 깨졌다. 작성 모드에서만 `challenge_id`를 붙이고, 그 안에서 `id`를 검사해 타입을 좁힌다.
+```ts
+if (!isEdit) {
+  if (!id) throw new Error("챌린지 정보를 찾을 수 없습니다.");
+  form.append("challenge_id", id);
+}
+```
+
+**4) TypeScript의 타입 좁히기는 "그 변수에 직접 건 검사"에만 반응한다**
+`!isEdit`(= `feedId === undefined`)는 `id`가 `string`이라는 정보를 컴파일러에게 주지 못한다. `useParams()`의 `id`는 항상 `string | undefined`라서, 라우트가 보장해도 `id` 자체를 검사해 좁혀야 한다. `id!` 단언은 틀리면 `"undefined"` 문자열이 서버로 가는 조용한 버그가 된다.
+
+**5) 미리보기용 blob URL은 cleanup에서 해제한다**
+```ts
+useEffect(() => {
+  const urls = files.map((file) => URL.createObjectURL(file));
+  setPreviews(urls);
+  return () => urls.forEach((url) => URL.revokeObjectURL(url));
+}, [files]);
+```
+`URL.createObjectURL`은 브라우저 메모리에 파일 참조를 잡아둔다. cleanup이 "구독 해제"가 아니라 "자원 해제"로 쓰인 첫 사례. 클라이언트에서 개수(3장)·크기(5MB)를 먼저 검사하고, 서버 규칙과 일치시켰다.
+
+**6) 탭 상태를 URL 쿼리로 — 저장하지 말고 URL에서 파생한다**
+```ts
+const [searchParams, setSearchParams] = useSearchParams();
+const value = searchParams.get("tab");
+const tab: Tab = value === "detail" || value === "rank" || value === "feed" ? value : "detail";
+function setTab(next: Tab) { setSearchParams({ tab: next }); }
+```
+URL은 사용자가 직접 바꿀 수 있는 입력이라 `string | null`을 `Tab`으로 검증해서 좁힌다(`as Tab` 단언은 이상한 값이 통과). 원본이 URL 하나라서 `useState`와 어긋날 일이 없다(8단계 파생 값과 같은 원리). `replace`를 주지 않아서 탭 이동이 히스토리에 쌓이고 뒤로가기가 탭을 되돌린다.
+
+**7) 렌더링 중에 부수 효과(URL 변경)를 하지 않는다**
+`if (!searchParams.get("tab")) setSearchParams(...)`처럼 기본값을 쿼리에 써넣는 코드는 렌더링 중 부수 효과다(QNA의 "렌더링 중 `navigate()` 금지"와 같은 문제). 기본값은 "없으면 detail로 취급"하는 파생으로 처리한다.
+
+**실습 내용:** ① `FeedFormPage`의 `handleSubmit`(FormData 조립, 모드별 `POST`/`PATCH`, 성공 시 `?tab=feed`로 `replace` 이동)을 `TODO(human)`으로 작성. ② `ChallengeDetailPage`의 탭을 `useSearchParams`로 옮기는 것을 `TODO(human)`으로 작성. Playwright로 이미지 4장/5MB 초과 에러, 2장 작성(미리보기·서버 저장·이미지 URL 200), 중복 제목, 수정 초기값·제목만 수정(이미지 유지)·새 이미지로 교체, 없는 피드, `?tab=` 쿼리 처리(없음/이상한 값/`feed`/`rank`), 새로고침 유지, 뒤로가기, 작성 후 `?tab=feed` 이동과 새 피드 표시를 확인. 테스트 피드는 `DELETE`로, 업로드된 테스트 이미지 파일은 직접 삭제해 정리.
+
+**흔한 실수 (직접 겪음) — 폼 3번 + 탭 2번의 시도:**
+- **폼 1차:** `challenge_id`를 아예 빼먹음(작성이 400이 될 상태), `response` 미사용으로 빌드 에러(`TS6133`), TODO 주석 잔여.
+- **폼 2차:** `challenge_id`를 모든 모드에 보내서 수정이 400(`should not exist`), `challengeId` 타입(`string | number | null | undefined`) 때문에 `TS2769`. dev 서버(Vite)는 타입 검사를 안 해서 브라우저에서는 타입 에러가 안 보였다.
+- **폼 3차:** 작성 모드에서만 `challenge_id`를 붙이고 `id`를 검사해 좁힘 → 모든 시나리오 통과.
+- **탭 1차:** `useState`를 그대로 두고 `useSearchParams`를 덧붙이며, 렌더링 중에 `setSearchParams`를 호출하고 검증이 없었다(원본이 둘이라 어긋남).
+- **탭 2차:** 쿼리에서 읽어 검증한 파생 값 + `setTab`이 쿼리만 바꾸도록 정리 → 통과.
+
+**남겨둔 것:** ① 서버가 "새 이미지를 보내면 전체 교체, 안 보내면 유지"만 지원해서 기존 이미지만 지우는 UI는 불가(백엔드 수정 필요). ② 피드 목록은 "사진 N장" 텍스트만 표시하고 이미지는 폼의 미리보기와 수정 화면의 기존 이미지 표시에만 쓴다. ③ 남의 피드 수정(403)은 계정이 하나뿐이라 확인하지 못했다(서버 코드는 챌린지와 같은 방식). ④ 수정·작성 화면의 "내 글이 아니면 버튼 숨김"은 Phase 5에서 `GET /user/me`와 함께. 다음은 Phase 4 — 참가/포기 버튼과 기록 추가(뮤테이션).

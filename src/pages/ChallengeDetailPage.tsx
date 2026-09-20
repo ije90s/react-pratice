@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import ChallengeFeedTab from "../components/ChallengeFeedTab";
 import ChallengeRankTab from "../components/ChallengeRankTab";
 import useFetch from "../hooks/useFetch";
@@ -9,7 +8,16 @@ type Tab = "detail" | "rank" | "feed";
 
 function ChallengeDetailPage() {
   const { id } = useParams(); // URL의 :id — 항상 string | undefined
-  const [tab, setTab] = useState<Tab>("detail");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const value = searchParams.get("tab");
+  const tab: Tab =
+    value === "detail" || value === "rank" || value === "feed"
+      ? value
+      : "detail";
+
+  function setTab(next: Tab){
+    setSearchParams({ tab: next });
+  }
   // 백엔드는 없는 id에도 404가 아니라 200 + data: null 로 응답하므로 T에 null을 포함한다
   const { data: challenge, loading, error } = useFetch<Challenge | null>(
     id ? `/challenge/${id}` : null,
