@@ -1439,3 +1439,49 @@ useEffect(() => {
 - **2차 수정:** cleanup을 `setUnauthorizedHandler(null)`로, 의존성을 `[token]`으로 바꿔 세 시나리오 모두 통과.
 
 **남겨둔 것:** ① `react-hooks/exhaustive-deps` 경고(`logout`이 의존성에 없음) — `[token]`이라 동작은 맞지만 `logout`이 다른 값을 참조하도록 바뀌면 옛 값을 쓰는 stale closure가 생길 수 있다. `useCallback`으로 감싸고 `[logout]`으로 바꾸는 것을 보완 과제로 등록(`SCREEN_PLAN.md`). ② 401이 나면 `useFetch`가 잠깐 `Unauthorized` 에러를 표시한 뒤 가드가 이동시킨다(깜빡임 가능). ③ 동시 요청이 여러 개 401을 받아도 `logout`은 `token`이 있을 때만 동작해 결과는 같다. 다음은 Phase 3 — 챌린지 생성/수정 공용 폼.
+
+---
+
+## 21단계: 챌린지 생성/수정 공용 폼 — 첫 쓰기 화면 (제어 폼 + POST/PATCH + 서버 검증 에러 표시)
+
+**실습 파일:** `src/components/ChallengeForm.tsx`(신규), `src/pages/ChallengeFormPage.tsx`(구현), `src/types/challenge.ts`(`ChallengeInput` 추가). 라우트(`/challenges/new`, `/challenges/:id/edit`)와 목록의 "새 챌린지" 링크는 기존 것을 사용.
+
+**배경:** Phase 2까지는 읽기(GET)만 했다. Phase 3의 첫 항목으로, 같은 폼을 생성(`POST /challenge`)과 수정(`PATCH /challenge/:id`)에 함께 쓴다. `SCREEN_PLAN`의 진행 방식대로 갈림길 두 개를 먼저 정했다: 수정 모드의 초기값 로딩은 "페이지가 로딩, 폼은 초기값을 받는다", 제출 성공 후에는 "상세로 `replace` 이동".
+
+**배운 개념:**
+
+**1) 폼 state는 전부 `string`, 제출할 때만 숫자로 변환**
+```ts
+interface ChallengeFormValues { type: string; mininum_count: string; ...; start_date: string; }
+onSubmit({ type: Number(form.type), mininum_count: Number(form.mininum_count), ... });
+```
+`<input>`의 값은 항상 문자열이라 `""` 같은 입력 중간 상태를 그대로 담을 수 있다. 변환은 제출 시점 한 곳에서만 한다. 하나의 `handleChange`가 `name`으로 필드를 구분하는 패턴은 7단계와 같다(`input`/`textarea`/`select`를 하나의 이벤트 타입으로 묶음).
+
+**2) 생성/수정 공용 폼 — 모드는 "초기값이 있는가"로 구분**
+```tsx
+<ChallengeForm key={id ?? "new"} initialValues={challenge ? toFormValues(challenge) : undefined} onSubmit={handleSubmit} />
+```
+페이지(`ChallengeFormPage`)가 `useFetch`로 로딩하고, 로딩이 끝난 뒤에야 폼을 렌더링하므로 폼은 `initialValues`를 `useState` 초기값으로만 쓴다. `useEffect`로 폼을 덮어쓰는 코드가 필요 없다. `key`는 다른 챌린지로 이동했을 때 폼 state를 새로 시작시킨다. `useFetch(null)`(생성 모드)은 요청을 보내지 않는다(18단계의 `path === null`).
+
+**3) 폼은 화면, 저장은 페이지 — `onSubmit`이 던지면 폼이 메시지를 보여준다**
+```ts
+// 페이지: 성공/실패 판단 없이 그대로 던진다
+const response = await apiFetch<Challenge>(path, { method, token, body: input });
+navigate(`/challenges/${isEdit ? id : response.id}`, { replace: true });
+// 폼: catch에서 ApiError면 서버 메시지를 그대로 표시
+```
+날짜 오류("날짜 설정이 잘못되었습니다"), 중복 제목("중복된 제목입니다."), 권한 오류("작성자만 접근 가능합니다")를 서버가 판단하고 프론트는 메시지만 보여준다. 클라이언트 검증은 "빈 값 제출 방지"까지만 한다.
+
+**4) 두 종류의 경로를 구분한다 — API 경로와 프론트 라우트**
+API는 `/challenge`(단수), 프론트 라우트는 `/challenges`(복수)다. 이동에 API 경로를 쓰면 저장은 되지만 빈 화면이 된다.
+
+**5) 날짜는 `<input type="date">`가 다루는 형식으로 맞춘다**
+서버 응답은 ISO 문자열이라 `slice(0, 10)`으로 `YYYY-MM-DD`만 폼에 넣고, 요청은 `"2026-10-01"` 그대로 보낸다(서버의 `@Type(() => Date)`가 변환). 자정 근처에서는 타임존에 따라 하루 어긋날 수 있다는 점은 남겨둔다.
+
+**실습 내용:** `handleSubmit`을 `TODO(human)`으로 작성 — `isEdit`으로 `path`/`method`를 정하고 `apiFetch` 한 번으로 저장, 성공하면 상세로 `replace` 이동, 실패는 그대로 throw. Playwright로 ① 빈 폼 제출 비활성, ② 날짜 오류 400 메시지, ③ 생성 후 이동과 뒤로가기, ④ 중복 제목 409, ⑤ 수정 초기값과 저장, ⑥ 남의 글(411) 수정 403(원본 불변), ⑦ 없는 챌린지를 확인. 테스트로 만든 챌린지는 `DELETE`로 정리.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** `handleSubmit`의 로직(모드 분기, `token` 전달, throw)은 정확했지만 `navigate`가 API 경로(`/challenge/...`)로 향했다. 빌드·린트·타입은 통과해 코드 리뷰에서 잡았다. `TODO(human)` 주석도 남아 있었다.
+- **2차 수정:** `/challenges/...`로 고쳐 7개 시나리오 모두 통과.
+
+**남겨둔 것:** ① 상세 화면에 "수정" 버튼이 없다. 내 글일 때만 보이려면 `GET /user/me`로 내 `id`를 알아야 해서 Phase 5(삭제 버튼)와 함께 처리한다(SCREEN_PLAN에 등록). ② 제출 후 상세로 이동할 때 잠깐 로딩이 보인다. ③ 제출 중 뒤로가기 등으로 화면을 떠나면 늦게 온 응답의 `navigate`가 실행될 수 있다(취소 처리는 안 함). ④ `type` 값(0/1)의 라벨이 폼(점수형/횟수형), 랭킹 탭(점/회), 상세 화면(숫자 그대로)에 흩어져 있다 — 상수로 모을지 고민할 것. 다음은 피드 작성/수정 폼(이미지 최대 3장, multipart).

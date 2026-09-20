@@ -76,7 +76,7 @@
 - [x] `/challenges/:id` 피드 탭 — `GET /feed/challenge/:id/feeds`
 
 ### Phase 3 — 쓰기 폼 (공용 컴포넌트)
-- [ ] 챌린지 생성/수정 공용 폼 — `/challenges/new`, `/challenges/:id/edit`
+- [x] 챌린지 생성/수정 공용 폼 — `/challenges/new`, `/challenges/:id/edit`
 - [ ] 피드 작성/수정 공용 폼 — `/challenges/:id/feeds/new`, `/feeds/:feedId/edit` (이미지 최대 3장이라 폼 중 제일 복잡)
 
 ### Phase 4 — 액션 (버튼 기반 mutation)
@@ -92,3 +92,4 @@
 - [x] 401 공통 처리 — 만료·무효 토큰일 때 `apiFetch`에서 401을 감지해 로그아웃 + `/login` 이동(콜백 등록 방식으로 구현) (현재 가드는 토큰 "존재"만 확인하고 "유효"는 확인 안 함 → 보호 화면에 `Unauthorized`만 표시됨)
 - [x] 로그인 성공 이동에 `replace` 적용 — `LoginPage`의 `navigate("/challenges")` → `{ replace: true }` (지금은 로그인 후 뒤로가기 시 로그인 화면이 다시 보임. `QNA.md` 참고)
 - [ ] `AuthProvider`의 `logout`을 `useCallback`으로 감싸고 `useEffect` 의존성을 `[logout]`으로 정리 — 지금은 `[token]`이라 동작은 맞지만 `react-hooks/exhaustive-deps` 경고가 남는다(`logout`이 다른 값을 참조하게 바뀌면 옛 값을 쓰는 stale closure 위험). `useCallback`을 배운 뒤 처리
+- [ ] 상세 화면에 "수정" 버튼 — 내 글일 때만 노출. `GET /user/me`로 내 `id`를 받아 `challenge.author_id`와 비교해야 해서 Phase 5(삭제 버튼)와 함께 처리. 지금은 `/challenges/:id/edit`를 주소창으로만 접근 가능(남의 글은 서버가 403)
