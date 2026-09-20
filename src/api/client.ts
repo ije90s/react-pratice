@@ -34,11 +34,12 @@ export async function apiFetch<T>(
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
     headers: {
-      "Content-Type": "application/json",
+      // FormData(multipart)는 Content-Type을 직접 지정하면 안 된다 — 브라우저가 boundary를 붙여 자동으로 넣는다.
+      ...(body instanceof FormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
   });
 
   if (!res.ok) {

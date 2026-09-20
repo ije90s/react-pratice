@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { Feed } from "../types/feed";
 import type { PagingResponse } from "../types/paging";
 import useFetch from "../hooks/useFetch";
@@ -18,10 +19,19 @@ function ChallengeFeedTab({ challengeId }: Props) {
 
   if (loading) return <p>불러오는 중...</p>;
   if (error) return <p>{error}</p>;
-  if (!meta || items.length === 0) return <p>아직 피드가 없습니다.</p>;
+  const writeLink = <Link to={`/challenges/${challengeId}/feeds/new`}>피드 작성</Link>;
+  if (!meta || items.length === 0) {
+    return (
+      <div>
+        <p>아직 피드가 없습니다.</p>
+        {writeLink}
+      </div>
+    );
+  }
 
   return (
     <div>
+      {writeLink}
       <ul style={{ listStyle: "none", padding: 0 }}>
         {items.map((feed) => (
           <li key={feed.id}>
