@@ -28,7 +28,7 @@ function LoginPage() {
     try {
       const loginInfo: LoginResponse = await apiFetch<LoginResponse>("/user/login", { method: "POST", body: form });
       login(loginInfo.access_token);
-      navigate("/challenges");
+      navigate("/challenges", {replace: true});
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "로그인에 실패했습니다.");
     }
