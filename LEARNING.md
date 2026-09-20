@@ -1397,3 +1397,45 @@ const meta = data?.meta ?? null;
 - **잔여물:** `TODO(human)` 주석, import 뒤에 남은 쉼표(`{ PagingResponse, }`)는 동작에는 지장이 없지만 커밋 전에 정리.
 
 **남겨둔 것:** ① 피드의 `images`는 지금 "사진 N장" 텍스트만 표시한다. 실제 이미지 표시는 이미지 URL 규칙(업로드 경로)을 확인하고 피드 작성 폼(Phase 3)과 함께 다룬다. ② 피드 항목 클릭 시 `/feeds/:feedId` 상세 이동은 Phase 5. ③ 다음은 401 공통 처리 — `apiFetch`(React 바깥 함수)가 `AuthContext`(React 상태)를 어떻게 바꿀지 설계가 갈림길이다.
+
+---
+
+## 20단계: 401 공통 처리 — React 바깥 함수(`apiFetch`)와 React 상태(`AuthContext`) 잇기
+
+**실습 파일:** `src/api/client.ts`(콜백 등록 함수 + 401 감지), `src/context/AuthContext.tsx`(`AuthProvider`에서 등록). 설계 논의는 `QNA.md` "401 공통 처리는 어디에 두는 게 좋은가?" 참고.
+
+**배경:** 가드는 토큰 "존재"만 확인하고 "유효"는 모른다. 토큰이 무효·만료면 서버가 401을 주지만 화면에는 `Unauthorized`만 떴다. 백엔드는 이미 401을 주므로(만료 1년, 리프레시 없음) 프론트만의 작업이다.
+
+**배운 개념:**
+
+**1) 정책은 한 곳에 — 전송 계층은 알리고, 인증 계층이 결정한다**
+```ts
+// client.ts — 모든 요청이 지나가는 곳에서 감지만
+let unauthorizedHandler: (() => void) | null = null;
+export function setUnauthorizedHandler(handler: (() => void) | null) { unauthorizedHandler = handler; }
+if (res.status === 401 && token) unauthorizedHandler?.();
+
+// AuthContext.tsx — 인증 상태를 아는 곳에서 결정
+useEffect(() => {
+  setUnauthorizedHandler(logout);
+  return () => setUnauthorizedHandler(null);
+}, [token]);
+```
+`useFetch`에서 처리하면 GET만 덮이고 뮤테이션마다 다시 붙여야 한다. `apiFetch`에서 감지하면 앞으로의 뮤테이션도 자동으로 덮인다. 토큰을 지우면 17단계의 가드가 `/login`으로 보내므로 `navigate`를 따로 부를 필요가 없다.
+
+**2) 전역에 들어가는 것은 토큰이 아니라 "실행할 함수"다**
+토큰은 그대로 `AuthContext` state에 있고, 모듈 변수에는 콜백만 등록한다. 약점(등록 시점, 숨은 결합, 옛 `token`을 물고 있는 콜백)은 cleanup 해제, `[token]` 재등록, 등록 지점을 한 곳으로 제한하는 것으로 완화했다.
+
+**3) 로그인 실패도 401이다 — `token`을 보낸 요청일 때만 "세션 만료"로 본다**
+잘못된 비밀번호는 토큰 없이 보낸 요청이므로 콜백이 호출되지 않아 로그인 화면의 에러 메시지("비밀번호가 잘못되었습니다.")가 그대로 표시된다.
+
+**4) cleanup은 이펙트가 한 일을 되돌리는 곳이다 — 대칭이 맞아야 한다**
+등록(`set...(logout)`)의 짝은 해제(`set...(null)`)다.
+
+**실습 내용:** `AuthProvider` 안에 `setUnauthorizedHandler`로 `logout`을 등록하는 `useEffect`를 `TODO(human)`으로 작성. Playwright로 ① 정상 로그인 + 새로고침 유지, ② 무효 토큰으로 `/challenges` 진입 시 토큰 삭제 + `/login` 이동, ③ 잘못된 비밀번호 시 에러 메시지 표시를 확인.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** cleanup에 `setToken(null)`을 넣고 의존성 배열을 생략. `StrictMode`가 마운트 직후 cleanup을 실행해 토큰 state가 `null`이 되었고, 로그인 후에도 `/login`에 머물고 새로고침해도 `/login`으로 튕겼다(`localStorage`에는 토큰이 남아 있음). 빌드·린트·타입은 통과해서 브라우저(Playwright)에서만 잡혔다.
+- **2차 수정:** cleanup을 `setUnauthorizedHandler(null)`로, 의존성을 `[token]`으로 바꿔 세 시나리오 모두 통과.
+
+**남겨둔 것:** ① `react-hooks/exhaustive-deps` 경고(`logout`이 의존성에 없음) — `[token]`이라 동작은 맞지만 `logout`이 다른 값을 참조하도록 바뀌면 옛 값을 쓰는 stale closure가 생길 수 있다. `useCallback`으로 감싸고 `[logout]`으로 바꾸는 것을 보완 과제로 등록(`SCREEN_PLAN.md`). ② 401이 나면 `useFetch`가 잠깐 `Unauthorized` 에러를 표시한 뒤 가드가 이동시킨다(깜빡임 가능). ③ 동시 요청이 여러 개 401을 받아도 `logout`은 `token`이 있을 때만 동작해 결과는 같다. 다음은 Phase 3 — 챌린지 생성/수정 공용 폼.

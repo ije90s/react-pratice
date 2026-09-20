@@ -1,4 +1,5 @@
-import { createContext, useState, useContext, type ReactNode } from "react";
+import { createContext, useState, useContext, type ReactNode, useEffect } from "react";
+import { setUnauthorizedHandler } from "../api/client";
 
 const STORAGE_KEY = "challenge_api_token";
 
@@ -24,6 +25,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null);
     }
   }
+
+  useEffect(() => {
+    setUnauthorizedHandler(logout);
+    return () => (setUnauthorizedHandler(null));
+  }, [token]);
+
   const value: AuthContextValue = { token, login, logout };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
