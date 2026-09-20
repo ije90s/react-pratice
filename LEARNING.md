@@ -1355,3 +1355,45 @@ if (!challenge) return <p>존재하지 않는 챌린지입니다.</p>;  // loadi
 - **2차 다듬기:** `setData(null)` 삭제 후 같은 시나리오로 재확인 — 에러 뒤에도 버튼이 남고 정상 응답이 오면 목록이 회복됨.
 
 **남겨둔 것:** ① `path`가 `null`로 바뀔 때 이전 `data`/`error`가 그대로 남는다(호출자가 `!id` 같은 조건을 먼저 검사해서 지금은 문제없음). ② 뮤테이션(POST/PATCH/DELETE)은 이 훅이 다루지 않음 — 참가/포기, 기록 추가 등 Phase 4에서 별도 패턴이 필요할 것. ③ 재요청(수동 새로고침)을 하는 방법이 없음 — 필요해지면 `refetch` 반환값이나 키 증가 방식을 고려. 다음은 피드 탭을 처음부터 이 훅으로 만들고, 그다음 401 공통 처리와 `LoginPage`의 `replace`(SCREEN_PLAN 보완 과제).
+
+---
+
+## 19단계: 로그인 `replace` + 피드 탭 — 히스토리 스택과 `useFetch` 첫 적용
+
+**실습 파일:** `src/pages/LoginPage.tsx`(수정), `src/components/ChallengeFeedTab.tsx`(신규), `src/types/feed.ts`(신규), `src/pages/ChallengeDetailPage.tsx`(피드 탭 연결). 검증용으로 `playwright`를 devDependency에 추가.
+
+**배경:** 18단계 끝에 남겨둔 순서대로, SCREEN_PLAN의 보완 과제 중 `replace`를 먼저 처리(워밍업)하고, `useFetch`를 처음부터 써서 만드는 첫 화면인 피드 탭을 구현했다. 17단계에서 인증 가드에만 붙였던 `replace`를 로그인 성공 이동에도 적용한 것.
+
+**배운 개념:**
+
+**1) `replace: true`는 히스토리에 새 항목을 쌓지 않고 현재 항목을 덮어쓴다**
+```ts
+navigate("/challenges", { replace: true });
+// push(기본):    [/login] → [/login, /challenges]  → 뒤로가기 = /login
+// replace: true: [/login] → [/challenges]          → 뒤로가기 = 로그인 이전 페이지
+```
+"그 화면에 다시 돌아올 이유가 없는 이동"(로그인 성공, 가드 리다이렉트)에 쓴다. 목록 → 상세처럼 뒤로가기로 돌아와야 하는 이동에는 쓰지 않는다. `true`는 "replace를 켠다"는 뜻이고 기본값 `false`가 push다.
+
+**2) 히스토리 동작은 "이전 항목이 있는 상태"를 만들어야 검증된다**
+Playwright에서 `about:blank`를 먼저 거친 뒤 `/login`으로 이동하고 로그인했다. 결과는 `history.length === 2`, 뒤로가기 후 `about:blank`(로그인 화면으로 돌아가지 않음). 시작 페이지가 없으면 `replace` 유무의 차이가 드러나지 않는다.
+
+**3) 같은 응답 형태면 같은 컴포넌트 구조 — `useFetch` 한 줄로 fetch 골격이 사라진다**
+```ts
+const { data, loading, error } = useFetch<PagingResponse<Feed>>(
+  `/feed/challenge/${challengeId}/feeds?page=${page}&limit=${LIMIT}`,
+);
+const items = data?.items ?? [];
+const meta = data?.meta ?? null;
+```
+피드 API도 `PagingResponse<T>`로 응답하므로 페이지 state와 이전/다음 버튼은 랭킹 탭과 같다. 다른 점은 제네릭 타입뿐이고, 서버 필드(`title`, `content`, `images`)를 그대로 써서 `toRankRow` 같은 변환 함수는 필요 없다. 정렬(최신순)과 페이지 분할은 서버 책임이라 클라이언트는 계산하지 않는다. `page`가 바뀌면 `path` 문자열이 바뀌어 자동으로 재요청된다.
+
+**4) dev에서 요청이 두 번 찍히는 것은 `StrictMode` 때문이다**
+`main.tsx`의 `StrictMode`가 이펙트를 마운트 → 정리 → 재마운트로 실행한다. 첫 요청은 `cancelled`로 무시되어 화면에는 영향이 없고, 프로덕션 빌드에서는 한 번만 나간다. `useFetch`의 cleanup이 동작한다는 확인이기도 하다.
+
+**실습 내용:** ① `LoginPage`의 `navigate("/challenges")`에 `{ replace: true }`를 붙이는 것을 `TODO(human)`으로 작성. ② `ChallengeFeedTab`의 `useFetch` 호출과 `items`/`meta` 파생을 `TODO(human)`으로 작성(뼈대·렌더링·탭 연결은 제공). Playwright로 ① 로그인 후 뒤로가기, ② 피드 411 1·2페이지 이동, 410 빈 상태를 확인. 피드가 한 건도 없어서 `POST /feed`로 12건을 넣어 검증하고 `DELETE`로 정리했다.
+
+**흔한 실수 (직접 겪음):**
+- **에디터 자동 import:** `{replace: true}`를 입력하다 react-router의 별개 함수 `replace`가 import에 자동으로 붙었다. 옵션 키는 import가 필요 없는 문자열이다. `npm run build`가 `TS6133`(미사용)으로 잡아줬다(`noUnusedLocals`).
+- **잔여물:** `TODO(human)` 주석, import 뒤에 남은 쉼표(`{ PagingResponse, }`)는 동작에는 지장이 없지만 커밋 전에 정리.
+
+**남겨둔 것:** ① 피드의 `images`는 지금 "사진 N장" 텍스트만 표시한다. 실제 이미지 표시는 이미지 URL 규칙(업로드 경로)을 확인하고 피드 작성 폼(Phase 3)과 함께 다룬다. ② 피드 항목 클릭 시 `/feeds/:feedId` 상세 이동은 Phase 5. ③ 다음은 401 공통 처리 — `apiFetch`(React 바깥 함수)가 `AuthContext`(React 상태)를 어떻게 바꿀지 설계가 갈림길이다.

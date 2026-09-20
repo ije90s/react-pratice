@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import ChallengeFeedTab from "../components/ChallengeFeedTab";
 import ChallengeRankTab from "../components/ChallengeRankTab";
 import useFetch from "../hooks/useFetch";
 import type { Challenge } from "../types/challenge";
@@ -55,7 +56,7 @@ function ChallengeDetailPage() {
       {tab === "rank" && (
         <ChallengeRankTab challengeId={challenge.id} type={challenge.type} />
       )}
-      {tab === "feed" && <p>피드 (다음 단계)</p>}
+      {tab === "feed" && <ChallengeFeedTab challengeId={challenge.id} />}
     </div>
   );
 }

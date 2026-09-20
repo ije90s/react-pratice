@@ -73,7 +73,7 @@
 - [x] `/challenges` 목록 — `GET /challenge` (페이지네이션)
 - [x] `/challenges/:id` 상세 탭 (읽기만) — `GET /challenge/:id`
 - [x] `/challenges/:id` 랭킹 탭 — `GET .../rank`
-- [ ] `/challenges/:id` 피드 탭 — `GET /feed/challenge/:id/feeds`
+- [x] `/challenges/:id` 피드 탭 — `GET /feed/challenge/:id/feeds`
 
 ### Phase 3 — 쓰기 폼 (공용 컴포넌트)
 - [ ] 챌린지 생성/수정 공용 폼 — `/challenges/new`, `/challenges/:id/edit`
@@ -88,6 +88,6 @@
 - [ ] 챌린지 삭제 — `DELETE /challenge/:id` (본인 글만)
 
 ### 보완 과제 (Phase 2 진행 중 발견)
-- [x] `useFetch` 훅 추출 — 목록/상세/랭킹 탭/마이페이지 2조각(5곳)에서 반복되는 fetch 골격(`loading` 시작, `error` 초기화, `cancelled` 가드, `finally`)을 한 곳으로. 훅 추출은 완료, 피드 탭은 이 훅으로 구현 예정
+- [x] `useFetch` 훅 추출 — 목록/상세/랭킹 탭/마이페이지 2조각(5곳)에서 반복되는 fetch 골격(`loading` 시작, `error` 초기화, `cancelled` 가드, `finally`)을 한 곳으로. 훅 추출 완료, 피드 탭에서 처음부터 이 훅으로 구현
 - [ ] 401 공통 처리 — 만료·무효 토큰일 때 `apiFetch`에서 401을 감지해 로그아웃 + `/login` 이동 (현재 가드는 토큰 "존재"만 확인하고 "유효"는 확인 안 함 → 보호 화면에 `Unauthorized`만 표시됨)
 - [x] 로그인 성공 이동에 `replace` 적용 — `LoginPage`의 `navigate("/challenges")` → `{ replace: true }` (지금은 로그인 후 뒤로가기 시 로그인 화면이 다시 보임. `QNA.md` 참고)
