@@ -1550,3 +1550,36 @@ URL은 사용자가 직접 바꿀 수 있는 입력이라 `string | null`을 `Ta
 - **탭 2차:** 쿼리에서 읽어 검증한 파생 값 + `setTab`이 쿼리만 바꾸도록 정리 → 통과.
 
 **남겨둔 것:** ① 서버가 "새 이미지를 보내면 전체 교체, 안 보내면 유지"만 지원해서 기존 이미지만 지우는 UI는 불가(백엔드 수정 필요). ② 피드 목록은 "사진 N장" 텍스트만 표시하고 이미지는 폼의 미리보기와 수정 화면의 기존 이미지 표시에만 쓴다. ③ 남의 피드 수정(403)은 계정이 하나뿐이라 확인하지 못했다(서버 코드는 챌린지와 같은 방식). ④ 수정·작성 화면의 "내 글이 아니면 버튼 숨김"은 Phase 5에서 `GET /user/me`와 함께. 다음은 Phase 4 — 참가/포기 버튼과 기록 추가(뮤테이션).
+
+---
+
+## 23단계: 참가/포기 버튼 — 첫 뮤테이션(클릭 시 요청)과 서버가 주는 초기 상태
+
+**실습 파일:** `src/components/ParticipationActions.tsx`(신규), `src/pages/ChallengeDetailPage.tsx`(상세 탭에 버튼 배치), `src/types/challenge.ts`(`my_status`). 백엔드(`challenge-api`)는 `GET /challenge/:id` 응답에 `my_status`를 추가했다.
+
+**배경:** Phase 4의 첫 항목. 버튼이 "참가하기"인지 "포기하기"인지 알려면 내 참가 상태가 필요한데, `GET .../rank/me`는 `{ myRank }`만 주고(status 없음) 미참가를 403 에러로 알려준다. 그래서 상세 응답에 `my_status`(null: 미참가, 0: 진행 중, 1: 완료, 2: 포기)를 얹는 쪽으로 정했다(직접 낸 아이디어).
+
+**배운 개념:**
+
+**1) 뮤테이션은 마운트가 아니라 클릭이 트리거다 — `useFetch`를 쓰지 않는다**
+`useFetch`는 "화면이 열릴 때 조회"용이다. 클릭 시 요청은 컴포넌트 안에서 `submitting`/`error` state와 `try/catch/finally`로 직접 관리한다. `finally`에서 `submitting`을 끄는 이유는 `useFetch`의 `finally`와 같다. `submitting` 중 버튼을 `disabled`로 두어 중복 요청을 막는다.
+
+**2) 서버가 준 값은 초기값으로만 쓰고, 이후에는 응답으로 갱신한다**
+```ts
+const [status, setStatus] = useState<number | null>(initialStatus);
+const response = await apiFetch<Participation>(path, { method, token });
+setStatus(response.status);
+```
+`POST`/`giveup` 응답에 갱신된 `status`가 있어서 재조회(`refetch`) 없이 화면을 바꾼다. 초기값은 첫 렌더에서만 반영되므로 `key={challenge.id}`로 챌린지가 바뀌면 새로 마운트시킨다(21단계 `ChallengeForm`과 같은 이유).
+
+**3) `giveup`은 토글이다 — 라벨은 화면 상태에서 계산한다**
+`GET .../giveup`이 0 ↔ 2를 오간다(완료 1이면 409). "포기하기"/"다시 참여하기"는 같은 요청이고 라벨만 다르다. 미참가는 `null`이라 `POST`, 그 외는 `giveup`으로 분기한다.
+
+**4) 미참가를 에러가 아니라 값(`null`)으로 표현한다**
+403으로 미참가를 알리면 프론트가 에러 문자열이나 status 코드로 상태를 추측해야 한다(`useFetch`는 에러를 문자열만 돌려준다). 화면이 필요로 하는 정보를 응답에 얹으면 그 문제가 사라진다.
+
+**실습 내용:** `handleClick`을 `TODO(human)`으로 작성 — 경로/메서드 분기, `submitting`·`error` 초기화, 응답 `status`로 `setStatus`, `ApiError` 메시지 표시, `finally`에서 해제. 백엔드는 `ResponseChallengeDetailDto`(상속), `ChallengeModule`에 `Participation` 리포지토리 등록(모듈 순환 회피). Playwright로 16개 시나리오 통과: 미참가 라벨, 참가 후 상태 변화와 `POST` 1건, 새로고침 유지(0/2), `giveup` 토글, 요청 중 비활성화, 409 에러 표시와 라벨 유지, 다음 성공 시 에러 제거, 다른 챌린지 상태 누수 없음, 완료 상태(응답 모킹). 테스트 챌린지는 `DELETE`로 정리(참가 기록은 삭제 API가 없어 남음).
+
+**흔한 실수:** 이번에는 빌드·린트·시나리오 모두 1차에 통과했다. 다만 뼈대에 넣어둔 `TODO(human)` 안내 주석은 커밋 전에 지워야 한다.
+
+**남겨둔 것:** ① 컴포넌트가 사라진 뒤 도착한 응답으로 `setState`가 실행될 수 있다(취소 처리 안 함). ② 뮤테이션 골격(`submitting`/`error`/`finally`)이 기록 추가 모달에서 반복되면 `useMutation` 훅으로 추출할지 판단한다. ③ 참가/포기 후 랭킹 탭의 내 순위 등 다른 화면과의 동기화는 하지 않는다(탭 전환 시 다시 조회). 다음은 기록 추가 모달(`PATCH`, 증분 입력).

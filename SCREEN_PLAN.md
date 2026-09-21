@@ -80,7 +80,7 @@
 - [x] 피드 작성/수정 공용 폼 — `/challenges/:id/feeds/new`, `/feeds/:feedId/edit` (이미지 최대 3장이라 폼 중 제일 복잡)
 
 ### Phase 4 — 액션 (버튼 기반 mutation)
-- [ ] 참가/포기 버튼 — `POST participation`, `GET .../giveup`
+- [x] 참가/포기 버튼 — `POST participation`, `GET .../giveup` (`GET /challenge/:id`의 `my_status`로 초기 상태 판단)
 - [ ] 기록 추가 모달 — `PATCH participation` (증분 입력)
 
 ### Phase 5 — 상세/삭제 마무리

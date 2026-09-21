@@ -1,6 +1,7 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import ChallengeFeedTab from "../components/ChallengeFeedTab";
 import ChallengeRankTab from "../components/ChallengeRankTab";
+import ParticipationActions from "../components/ParticipationActions";
 import useFetch from "../hooks/useFetch";
 import type { Challenge } from "../types/challenge";
 
@@ -47,6 +48,11 @@ function ChallengeDetailPage() {
 
       {tab === "detail" && (
         <section>
+          <ParticipationActions
+            key={challenge.id}
+            challengeId={challenge.id}
+            initialStatus={challenge.my_status ?? null}
+          />
           <p>{challenge.content}</p>
           <dl>
             <dt>기간</dt>
