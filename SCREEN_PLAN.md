@@ -94,3 +94,34 @@
 - [ ] `AuthProvider`의 `logout`을 `useCallback`으로 감싸고 `useEffect` 의존성을 `[logout]`으로 정리 — 지금은 `[token]`이라 동작은 맞지만 `react-hooks/exhaustive-deps` 경고가 남는다(`logout`이 다른 값을 참조하게 바뀌면 옛 값을 쓰는 stale closure 위험). `useCallback`을 배운 뒤 처리
 - [x] 상세 화면에 "수정" 버튼 — 내 글일 때만 노출(챌린지 완료, 피드 상세는 Phase 5 `/feeds/:feedId`에서). `GET /user/me`로 내 `id`를 받아 `challenge.author_id`와 비교해야 해서 Phase 5(삭제 버튼)와 함께 처리. 지금은 `/challenges/:id/edit`를 주소창으로만 접근 가능(남의 글은 서버가 403)
 - [ ] 피드 상세 화면에서 이미지 표시·이미지 삭제 — 서버가 "새 이미지를 보내면 전체 교체, 안 보내면 유지"만 지원해서 기존 이미지만 지우는 UI는 불가(백엔드 수정 필요). 피드 목록은 지금 "사진 N장" 텍스트만 표시
+
+### 추가 과제 (Phase 4·5 진행 중 발견, 2026-09-21 정리)
+
+> 위 체크리스트에 없던 것들. 우선순위는 위에서부터.
+
+**다음 작업 (이어서 할 것)**
+- [ ] `useMutation` 훅 추출 — `submitting`/`error`/`try·catch·finally` 골격이 `ParticipationActions`, `RecordAddModal`, `ChallengeOwnerActions` 세 곳에서 반복된다. 피드 삭제(Phase 5 `/feeds/:feedId`)에서 네 번째로 쓰기 전에 뽑는 것을 추천. 뽑을 때 결정할 것: 반환 형태(`run(fn)` 래퍼 vs `{ mutate, submitting, error }`), 성공 여부를 어떻게 알릴지(`boolean` 반환 vs 콜백), 검증 실패를 훅 밖에서 처리할지. 세 곳을 모두 교체하고 이전 시나리오(참가/포기 16개, 기록 추가, 삭제 12개)를 다시 돌려 회귀 확인.
+- [ ] `/feeds/:feedId` 피드 상세·삭제 — 피드 응답에 `user_id`가 이미 있어서(백엔드 수정 불필요) `useMe()`의 `me.id`와 비교해 "내 글일 때만 수정·삭제 버튼"을 만들 수 있다. `ChallengeOwnerActions`와 같은 구조라 공용화 가능성도 검토(작성자 id를 prop으로 받는 `OwnerActions`). 삭제 성공 후 이동 위치는 `/challenges/:id?tab=feed`(피드의 `challenge_id` 필요 — 응답에 있는지 확인).
+
+**개선 (동작에는 문제 없음)**
+- [ ] `type`(0/1) 라벨 상수화 — 챌린지 유형 라벨이 폼(점수형/횟수형), 랭킹 탭("점"/"회"), 기록 추가 모달(점수/횟수·점/회), 상세 화면(숫자 그대로)에 흩어져 있다. `STATUS_LABELS`처럼 `types/challenge.ts`에 상수로 모으기(21단계 남겨둔 것 ④).
+- [ ] 기록 추가 후 내 기록 표시 — `PATCH`·`POST`·`giveup` 응답에 `score`/`challenge_count`가 있는데 상세 화면에서 "내 기록"으로 보여주지 않아 사용자가 성공 여부를 알 수 없다(완료 시에만 화면이 바뀜). `ParticipationActions`에 `participation` state를 두는 방향(24단계 남겨둔 것 ③④).
+- [ ] 상세 화면의 유형·최소 횟수 표시 — 지금 `유형`이 숫자 그대로 나온다(위 라벨 상수화와 함께).
+- [ ] 참가/포기·기록 추가·삭제 후 랭킹 탭 등 다른 탭 데이터 동기화 — 탭 전환 시 다시 조회하는 것에 의존한다. `refetch`가 필요해지면 `useFetch`에 재요청 수단 추가(18단계 남겨둔 것 ③).
+
+**알려진 한계 (필요해지면 처리)**
+- [ ] `useFetch`가 `path` 변경 시 이전 `data`를 유지 — `UserProvider`는 `loading`으로 가려 두었지만, 토큰이 생긴 직후 한 번의 렌더 동안 `loading=false`이면서 이전 `data`가 남을 수 있다(`loading` 초기값이 마운트 때만 정해짐). 근본 해결은 `path`가 바뀔 때 `data`를 비우는 것인데, `MyParticipationSection`에서 에러 후 재시도 버튼이 사라지는 회귀(18단계)가 있었으므로 `data` 유지 여부를 호출자가 고를 수 있게 하는 방안까지 함께 검토.
+- [ ] 컴포넌트가 사라진 뒤 도착한 뮤테이션 응답의 `setState`/`navigate` — `ParticipationActions`, `RecordAddModal`, `ChallengeOwnerActions`, 챌린지·피드 폼 제출 모두 취소 처리를 하지 않는다(21·22·23·24단계 남겨둔 것). `useMutation`으로 뽑을 때 `AbortController` 또는 마운트 여부 가드를 함께 넣을지 결정.
+- [ ] 삭제 확인 `<dialog>`의 배경 클릭 닫기 — 네이티브 `<dialog>`는 기본 지원하지 않아 직접 처리해야 한다. 기록 추가 모달과 삭제 확인 모달 둘 다 해당(`QNA.md` 2026-09-21 항목).
+- [ ] `<form noValidate>` 검토 — 기록 추가 모달의 입력 오류 안내가 지금은 브라우저 기본 문구다. 문구를 직접 통제하려면 `noValidate`를 켜고 코드 검증(`setError`)만 쓴다.
+- [ ] 완료(1) 상태에서 기록 추가 불가 — 서버는 완료 뒤에도 `PATCH`를 허용하지만(포기 상태만 409) 화면은 완료 안내만 보여주고 버튼이 없다. 완료 후에도 기록을 더할 수 있어야 하는지는 기획 결정 필요.
+
+**학습 정리 후보 (`QNA.md`에 아직 없음)**
+- [ ] Context로 서버 데이터를 공유하는 이유와 Provider를 나눈 기준(`AuthProvider`/`UserProvider`, 순환 의존 회피)
+- [ ] `null`/`undefined`끼리의 `===` 함정과 권한 판단은 "값이 있을 때만 비교" 원칙
+- [ ] 뮤테이션 상태 관리를 컴포넌트 안에서 할지 훅으로 뽑을지의 기준("반복이 보이면 추출")
+
+**테스트 데이터 메모 (수동 정리 필요)**
+- 테스트 계정 `list-test-17975@example.com`에 참가 기록이 계속 쌓인다(참가 삭제 API 없음, 챌린지 삭제 시 `SET NULL`로 남음). 이번 세션에서 약 8건 추가.
+- 세션 중 curl 검증으로 만든 임시 계정 `p4-test-*@example.com` 1개와 참가 기록 1건이 DB에 남아 있다(사용자 삭제 API 없음, DB에서 직접 정리).
+- Playwright 검증 스크립트는 스크래치패드에만 있고 저장소에는 없다. 회귀 확인이 자주 필요하면 저장소에 `e2e/` 폴더로 옮길지 결정(테스트 러너는 아직 없음, CLAUDE.md 참고).
