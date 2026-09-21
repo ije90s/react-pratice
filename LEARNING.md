@@ -1583,3 +1583,41 @@ setStatus(response.status);
 **흔한 실수:** 이번에는 빌드·린트·시나리오 모두 1차에 통과했다. 다만 뼈대에 넣어둔 `TODO(human)` 안내 주석은 커밋 전에 지워야 한다.
 
 **남겨둔 것:** ① 컴포넌트가 사라진 뒤 도착한 응답으로 `setState`가 실행될 수 있다(취소 처리 안 함). ② 뮤테이션 골격(`submitting`/`error`/`finally`)이 기록 추가 모달에서 반복되면 `useMutation` 훅으로 추출할지 판단한다. ③ 참가/포기 후 랭킹 탭의 내 순위 등 다른 화면과의 동기화는 하지 않는다(탭 전환 시 다시 조회). 다음은 기록 추가 모달(`PATCH`, 증분 입력).
+
+---
+
+## 24단계: 기록 추가 모달 — 네이티브 `<dialog>`와 `useRef`, 증분 입력
+
+**실습 파일:** `src/components/RecordAddModal.tsx`(신규), `src/components/ParticipationActions.tsx`(모달 연결, `type` prop), `src/pages/ChallengeDetailPage.tsx`(`type` 전달).
+
+**배경:** Phase 4의 마지막 항목. `PATCH /participation/challenge/:id`의 `score`/`challenge_count`는 총점이 아니라 **현재 값에 더할 값**(서버가 SQL `increment`)이라서 "오늘 +N 추가" 입력으로 만들었다. 유형이 0이면 `score`, 아니면 `challenge_count`만 보낸다. 0 이상만 허용되고 뺄 수는 없다. 목표(`mininum_count`)를 채우면 서버가 `status`를 1로 바꿔 응답한다.
+
+**배운 개념:**
+
+**1) 네이티브 `<dialog>`는 `useRef`로 DOM을 직접 부른다**
+```ts
+const dialogRef = useRef<HTMLDialogElement>(null);
+dialogRef.current?.showModal(); // 열기 — 배경 차단·Esc 닫기·포커스 가둠은 브라우저가 처리
+dialogRef.current?.close();
+```
+열림 상태를 `useState`로 들지 않고 브라우저에 맡긴다. React의 선언형 흐름에서 벗어나 DOM 메서드를 직접 부르는 첫 사례.
+
+**2) 닫히는 경로가 여럿이면 정리는 `close` 이벤트 한 곳에서 한다**
+Esc, 취소 버튼, `close()` 호출 모두 `dialog`가 `close` 이벤트를 낸다. `<dialog onClose={handleClosed}>`에서 입력값·에러를 비우면 Esc로 닫았을 때 값이 남는 버그를 피한다.
+
+**3) 성공 결과는 콜백으로 부모에 올린다**
+`onRecorded(response)`로 갱신된 `status`를 `ParticipationActions`에 넘기면, 목표를 채워 1(완료)이 되는 순간 화면이 완료 안내로 바뀐다. 모달이 참가 상태를 직접 들지 않는다. 진행 중(0)일 때만 모달을 렌더링한다(포기 상태는 서버가 409).
+
+**4) 브라우저 기본 폼 검증이 `onSubmit`보다 먼저다**
+`<input type="number" min={1} step={1}>`이면 `1.5`, `0`, `-2`는 브라우저가 제출 자체를 막아서 `handleSubmit`이 호출되지 않는다(메시지는 브라우저 기본 안내). 그래서 코드의 `!Number.isInteger(n) || n < 1` 검사는 화면 조작으로는 닿기 어려운 이중 방어다. 안내 문구를 직접 통제하려면 `<form noValidate>`를 쓴다. 서버 검증(`@Min(0)`)이 최종 방어선이다.
+
+**5) 검증 조건은 "허용 조건"을 먼저 적고 부정한다**
+거절 조건을 `A || B`로 적으면 부정 하나를 빠뜨렸을 때 정상 입력이 전부 막힌다(아래 실수).
+
+**실습 내용:** `handleSubmit`을 `TODO(human)`으로 작성 — 입력값을 숫자로 바꿔 1 이상의 정수 검사, 유형별 본문 분기, `PATCH` 후 `onRecorded`와 `close()`, 실패 시 `ApiError` 메시지, `finally`에서 `submitting` 해제. Playwright로 모달 열림, 유효 입력의 `PATCH` 본문과 닫힘, 잘못된 입력(`1.5`/`0`/`-2`)이 요청 없이 막힘, Esc 후 초기화, 409 표시와 모달 유지, 처리 중 비활성화, 3+2=5로 목표 달성 시 완료 전환과 서버 누적값(`score=5`, `status=1`), 횟수형 본문, 포기 상태에서 버튼 숨김을 확인. 완료 상태와 409 응답은 모킹.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** 검증을 `Number.isInteger(n) || n < 1`로 적어 정상 입력(`3`)이 전부 거절됐다(`!` 누락). 빌드·린트·타입은 통과했고 브라우저에서 PATCH가 나가지 않는 것으로 발견했다.
+- **2차 수정:** `!Number.isInteger(n) || n < 1`로 고쳐 통과. 이어서 잘못된 입력 3건의 "커스텀 에러 표시" 기대가 틀렸다는 것도 확인(위 4번).
+
+**남겨둔 것:** ① 참가/포기(`handleClick`)와 기록 추가(`handleSubmit`)가 `submitting`/`error`/`try·catch·finally` 골격을 반복한다 — `useMutation` 훅으로 뽑을지 판단할 시점. ② 컴포넌트가 사라진 뒤 도착한 응답의 `setState`는 막지 않는다. ③ 기록 추가 성공 시 화면에 새 총점 표시나 완료 외의 피드백이 없다(랭킹 탭은 탭 전환 시 다시 조회). ④ 참가/포기 응답과 기록 추가 응답에 `score`/`challenge_count`가 있지만 상세 화면에서 내 기록으로 보여주지 않는다. 다음은 Phase 5 — `/feeds/:feedId` 상세·삭제와 챌린지 삭제, 내 글일 때만 수정·삭제 버튼 노출(`GET /user/me`).

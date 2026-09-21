@@ -81,7 +81,7 @@
 
 ### Phase 4 — 액션 (버튼 기반 mutation)
 - [x] 참가/포기 버튼 — `POST participation`, `GET .../giveup` (`GET /challenge/:id`의 `my_status`로 초기 상태 판단)
-- [ ] 기록 추가 모달 — `PATCH participation` (증분 입력)
+- [x] 기록 추가 모달 — `PATCH participation` (증분 입력, 네이티브 `<dialog>`)
 
 ### Phase 5 — 상세/삭제 마무리
 - [ ] `/feeds/:feedId` — `GET/DELETE`

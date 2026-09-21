@@ -51,6 +51,7 @@ function ChallengeDetailPage() {
           <ParticipationActions
             key={challenge.id}
             challengeId={challenge.id}
+            type={challenge.type}
             initialStatus={challenge.my_status ?? null}
           />
           <p>{challenge.content}</p>
