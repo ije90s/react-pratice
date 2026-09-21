@@ -107,3 +107,81 @@ replace 있음:         [/login] → [/login]                   ← /mypage 항�
 | 로그인 실패도 401 | `token`을 보낸 요청일 때만 콜백 호출 |
 
 **관련 단계:** `LEARNING.md` 18단계 "남겨둔 것", `SCREEN_PLAN.md` 보완 과제 "401 공통 처리"
+
+---
+
+## [2026-09-21] `useRef`와 `<dialog>`는 무엇이고, 왜 같이 쓰는가?
+
+**질문:**
+1. `useRef`는 무엇이고 `useState`와 무엇이 다른가?
+2. 네이티브 `<dialog>`는 무엇이고, `<div>` 오버레이 대신 쓰면 무엇이 좋은가?
+
+**답변:**
+
+### 1) `useRef` — 렌더링이 다시 일어나도 유지되는 상자(`{ current: 값 }`), 값을 바꿔도 화면은 다시 그려지지 않는다
+
+| | `useState` | `useRef` |
+|---|---|---|
+| 값을 바꾸면 | 리렌더링 발생 | 리렌더링 없음 |
+| 값이 유지되나 | 유지됨 | 유지됨 |
+| 읽고 쓰는 곳 | `value`, `setValue(...)` | `ref.current` 직접 대입 |
+| 주 용도 | 화면에 보여줄 값 | 화면과 무관한 값, DOM 요소 참조 |
+
+용도는 두 가지다.
+
+1. **DOM 요소 잡기**(이번에 쓴 것)
+   ```tsx
+   const dialogRef = useRef<HTMLDialogElement>(null);
+   <dialog ref={dialogRef}>
+   ```
+   React가 요소를 만들면 `dialogRef.current`에 실제 DOM이 들어가서 `showModal()` 같은 브라우저 메서드를 직접 부를 수 있다.
+2. **렌더링과 무관한 값 보관**(타이머 id, 이전 값 등). 이 프로젝트에서는 아직 쓰지 않았다.
+
+- 첫 렌더 시점에는 DOM이 아직 없어서 초기값이 `null`이다. 타입이 `HTMLDialogElement | null`이 되므로 `dialogRef.current?.showModal()`처럼 `?.`를 쓴다.
+- **판단 기준:** "이 값이 화면에 그려지는 데이터인가?" 그려야 하면 state, 브라우저 객체를 직접 조작하는 창구이면 ref. 원칙은 가능하면 state로 하고 안 되는 것만 ref로 한다. 포커스·스크롤·재생/정지·`showModal()`처럼 **명령형 메서드**를 불러야 하는 브라우저 API가 대표적이다.
+
+### 2) 네이티브 `<dialog>` — 브라우저가 기본 제공하는 모달 창
+
+`showModal()`로 열면 브라우저가 알아서 처리해 주는 것:
+
+- 최상위 레이어에 뜬다(`z-index`, `position: fixed` 싸움이 필요 없다).
+- 뒷배경이 조작 불가가 된다(클릭·탭 이동 차단).
+- 포커스가 모달 안에 갇힌다.
+- Esc로 닫힌다.
+- 스크린 리더에 모달로 알려진다(접근성).
+
+`<div>` 오버레이로 만들면 이 항목을 전부 직접 구현해야 한다.
+
+```ts
+dialog.showModal(); // 모달로 열기 (배경 차단 O)
+dialog.show();      // 그냥 열기 (배경 차단 X, 모달 아님)
+dialog.close();     // 닫기
+dialog.open;        // 열려 있으면 true
+```
+`open` 속성을 직접 붙이면 배경 차단·포커스 가둠이 없는 일반 팝업이 된다. 반드시 `showModal()`을 쓴다.
+
+### 3) 합쳐진 코드 — 열림 상태를 React state로 들지 않고 브라우저에 맡긴다
+
+```tsx
+const dialogRef = useRef<HTMLDialogElement>(null);
+function open()  { dialogRef.current?.showModal(); }
+function close() { dialogRef.current?.close(); }
+
+<button onClick={open}>기록 추가</button>
+<dialog ref={dialogRef} onClose={handleClosed}>...</dialog>
+```
+
+1. 버튼 클릭 → `open()` → 브라우저가 모달을 띄운다.
+2. Esc, "취소", 제출 성공 후 `close()` 중 **어느 경로로 닫혀도** `dialog`가 `close` 이벤트를 낸다.
+3. `onClose={handleClosed}`가 입력값·에러를 비운다(정리 코드를 한 곳에 모은다).
+
+열림 상태의 진실은 브라우저(`dialog.open`)에 있고 React는 명령만 내린다. 브라우저가 이미 상태를 관리하는 기능(모달·포커스·미디어)에서는 "명령을 내리고 이벤트로 결과를 듣는" 방식이 선언형보다 잘 맞는다.
+
+### 함정
+
+- **배경 클릭으로는 안 닫힌다.** 네이티브 기본 동작이라 필요하면 `onClick`으로 직접 처리한다.
+- `<dialog>` 안의 `<form method="dialog">`는 제출하면 모달을 닫아 주지만, 우리는 `onSubmit`에서 `fetch`를 해야 해서 쓰지 않았다.
+- 이미 열린 상태에서 `showModal()`을 다시 부르면 에러가 난다. 열린 모달이 뒤 버튼을 막으므로 이 코드에서는 안전하다.
+- 조건부 렌더링되는 컴포넌트에서는 ref가 `null`이 될 수 있다. `ParticipationActions`가 `status === 0`일 때만 `RecordAddModal`을 그려서, 완료로 바뀌면 모달이 통째로 사라진다. 그래서 `onRecorded(...)` 다음에 `close()`를 부르는 순서가 안전하다.
+
+**관련 단계:** `LEARNING.md` 24단계(기록 추가 모달), `src/components/RecordAddModal.tsx`
