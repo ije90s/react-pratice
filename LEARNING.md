@@ -1621,3 +1621,44 @@ Esc, 취소 버튼, `close()` 호출 모두 `dialog`가 `close` 이벤트를 낸
 - **2차 수정:** `!Number.isInteger(n) || n < 1`로 고쳐 통과. 이어서 잘못된 입력 3건의 "커스텀 에러 표시" 기대가 틀렸다는 것도 확인(위 4번).
 
 **남겨둔 것:** ① 참가/포기(`handleClick`)와 기록 추가(`handleSubmit`)가 `submitting`/`error`/`try·catch·finally` 골격을 반복한다 — `useMutation` 훅으로 뽑을지 판단할 시점. ② 컴포넌트가 사라진 뒤 도착한 응답의 `setState`는 막지 않는다. ③ 기록 추가 성공 시 화면에 새 총점 표시나 완료 외의 피드백이 없다(랭킹 탭은 탭 전환 시 다시 조회). ④ 참가/포기 응답과 기록 추가 응답에 `score`/`challenge_count`가 있지만 상세 화면에서 내 기록으로 보여주지 않는다. 다음은 Phase 5 — `/feeds/:feedId` 상세·삭제와 챌린지 삭제, 내 글일 때만 수정·삭제 버튼 노출(`GET /user/me`).
+
+---
+
+## 25단계: 내 정보 공유(`UserProvider`)와 챌린지 수정·삭제 버튼 — "내 글일 때만" 노출
+
+**실습 파일:** `src/context/UserContext.tsx`(신규), `src/App.tsx`(Provider 배치), `src/components/MyProfileSection.tsx`(공유 값 사용), `src/components/ChallengeOwnerActions.tsx`(신규), `src/pages/ChallengeDetailPage.tsx`(버튼 배치).
+
+**배경:** Phase 5의 시작. 챌린지·피드의 수정/삭제 버튼을 "내 글일 때만" 보여주려면 내 `id`(`GET /user/me`)를 `author_id`와 비교해야 한다. 지금까지는 `MyProfileSection`만 `/user/me`를 조회했으므로, 여러 화면이 같은 값을 쓰는 방법을 정해야 했다. 선택지는 ① `UserProvider` Context, ② 화면마다 `useMe()` 훅 조회, ③ 백엔드에 `is_mine` 추가였고 ①을 골랐다.
+
+**배운 개념:**
+
+**1) 공유하는 서버 데이터는 Provider 하나가 한 번만 조회한다**
+```tsx
+<AuthProvider>
+  <UserProvider>   {/* useFetch가 useAuth()를 쓰므로 AuthProvider 안쪽 */}
+    <Routes>...
+```
+`UserProvider`가 `useFetch<User>(token ? "/user/me" : null)`로 조회하고 `useMe()`로 `{ me, loading, error }`를 내려준다. 토큰이 없으면 `path`가 `null`이라 요청하지 않는다. 화면을 여러 번 오가도 `/user/me` 요청은 1번(마이페이지의 중복 조회도 제거). `AuthProvider`에 넣지 않고 나눈 이유는 `AuthProvider`가 `useFetch`에 의존하는 순환(`useFetch` → `useAuth` → `AuthProvider`)을 피하기 위해서다.
+
+**2) `useFetch`가 이전 `data`를 지우지 않는 성질이 처음 "실제 위험"이 됐다**
+```ts
+const me: User | null = (!token || loading) ? null : data;
+```
+A가 로그아웃하고 B가 로그인하면 B의 응답이 오기 전까지 `data`에 A의 정보가 남는다. 이 값으로 "내 글" 판단을 하면 남의 글에 수정 버튼이 보일 수 있다. 토큰이 없거나 로딩 중이면 `null`로 내보내서 막았다(18단계 "남겨둔 것" ①의 실제 사례). Playwright로 재로그인 중 `/user/me`를 1.5초 지연시켜, 이전 이메일이 한 번도 보이지 않는 것을 확인.
+
+**3) `null`끼리의 `===`는 `true`다 — 권한 판단은 "값이 있을 때만 비교"**
+```ts
+const isMine = me !== null && authorId !== null && me.id === authorId;
+```
+`me?.id === authorId`는 타입상(`number | null`)으로는 맞지만, `author_id`가 `undefined`가 되면 로딩 중(`me`가 `null`)에 `undefined === undefined`로 `true`가 된다. 옵셔널 체이닝은 "없음"을 `undefined`로 바꿔서 반대쪽의 "없음"과 우연히 같아질 수 있다. 기본값이 "거절"이어야 하는 판단은 두 값이 모두 있는지 먼저 확인한다. 버튼 숨김은 편의이고 진짜 방어선은 서버의 403이다.
+
+**4) 삭제는 `replace`로 이동한다**
+`DELETE /challenge/:id`는 성공하면 `200 { success: true }`(없는 글 404, 남의 글 403)이고, `navigate("/challenges", { replace: true })`로 삭제된 글의 상세가 히스토리에 남지 않게 했다. 뒤로가기가 삭제된 글이 아닌 이전 화면으로 간다(17·19단계 `replace`와 같은 원리). 삭제 확인에는 24단계의 `<dialog>`를 다시 썼고, 이번에는 폼이 없어서 `close` 이벤트에서는 에러만 비운다.
+
+**실습 내용:** `UserProvider`의 `me` 계산과 `ChallengeOwnerActions`의 `isMine` 판단을 각각 `TODO(human)`으로 작성. Playwright로 ① 로그인 화면에서는 `/user/me` 요청 0건, ② 화면 이동 여러 번에도 요청 1번, ③ 재로그인 중 이전 사용자 정보 미노출, ④ 내 글의 수정·삭제 표시와 수정 링크 이동, ⑤ 남의 글(411)과 `author_id=null`(모킹) 숨김, ⑥ 삭제 취소 시 요청 없음, ⑦ 403 모킹 시 메시지·모달 유지·에러 초기화, ⑧ 삭제 중 "처리 중..."·이동·뒤로가기·서버 삭제 확인(총 17개 통과). 테스트 챌린지는 `DELETE`로 정리.
+
+**흔한 실수 (직접 겪음) — 1번의 수정:**
+- **1차 시도:** `me?.id === authorId ? true : false` — 현재 타입에서는 정확하지만 `? true : false`가 중복이고, `author_id`가 `undefined`가 되는 경우를 타입에 기대어 막고 있었다.
+- **2차 수정:** `me !== null && authorId !== null && me.id === authorId`로 "값이 있을 때만 비교"하게 정리. 시나리오 재실행에서 회귀 없음.
+
+**남겨둔 것:** ① 토큰이 생긴 직후 한 번의 렌더 동안 `useFetch`의 `loading`이 `false`이면서 이전 `data`가 남을 수 있다(`loading` 초기값이 마운트 때만 정해진다). 그 시점에 `me`를 소비하는 화면이 마운트돼 있지 않아 실제로는 드러나지 않았고, 근본 해결은 `useFetch`가 `path` 변경 시 `data`를 비우는 것(단 `MyParticipationSection`의 재시도 회귀를 다시 확인해야 한다). ② `submitting`/`error`/`try·catch·finally` 골격이 `ParticipationActions`, `RecordAddModal`, `ChallengeOwnerActions` 세 곳에서 반복된다 — `useMutation` 훅으로 추출할 시점. ③ 삭제 후 이동하는 사이 컴포넌트가 사라져도 `finally`의 `setSubmitting`이 실행된다(취소 처리 안 함). ④ 피드 상세·수정·삭제의 "내 글" 판단은 피드 응답에 작성자 id가 있는지 확인이 필요하다. 다음은 `/feeds/:feedId` 상세·삭제(Phase 5)와 `useMutation` 추출.

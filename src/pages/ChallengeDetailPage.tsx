@@ -1,5 +1,6 @@
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import ChallengeFeedTab from "../components/ChallengeFeedTab";
+import ChallengeOwnerActions from "../components/ChallengeOwnerActions";
 import ChallengeRankTab from "../components/ChallengeRankTab";
 import ParticipationActions from "../components/ParticipationActions";
 import useFetch from "../hooks/useFetch";
@@ -33,6 +34,7 @@ function ChallengeDetailPage() {
     <div>
       <Link to="/challenges">← 목록</Link>
       <h1>{challenge.title}</h1>
+      <ChallengeOwnerActions challengeId={challenge.id} authorId={challenge.author_id} />
 
       <nav>
         <button onClick={() => setTab("detail")} disabled={tab === "detail"}>
