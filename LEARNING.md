@@ -1698,3 +1698,51 @@ close();
 - **2차 수정:** `finally { setSubmitting(false); }`로 옮겨 통과. 테스트에 "실패 후 버튼 재활성화·재시도 성공" 항목을 넣어 이 경로를 확인했다.
 
 **남겨둔 것:** ① 컴포넌트가 사라진 뒤 도착한 응답의 `setState`는 여전히 막지 않는다(삭제 후 이동할 때 `finally`의 `setSubmitting`) — `useFetch`의 `cancelled` 같은 가드는 `mutate`가 이벤트 핸들러에서 불려서 그대로 쓸 수 없다. ② `mutate` 함수는 렌더링마다 새로 만들어진다 — 의존성 배열에 넣을 일이 생기면 `useCallback`이 필요하다(`AuthProvider`의 `logout`과 같은 주제). 다음은 `/feeds/:feedId` 상세·삭제 — 이 훅을 처음부터 쓰는 첫 화면.
+
+---
+
+## 27단계: 피드 상세·삭제(`/feeds/:feedId`) — `useMutation`을 처음부터 쓰는 첫 화면, Phase 5 마무리
+
+**실습 파일:** `src/pages/FeedDetailPage.tsx`(placeholder → 구현), `src/components/FeedOwnerActions.tsx`(신규), `src/components/ChallengeFeedTab.tsx`(제목 → 상세 링크).
+
+**배경:** Phase 5의 마지막 항목. 피드 응답에 `user_id`가 있어서 25단계의 `useMe()`로 "내 글" 판단이 가능하고(백엔드 수정 불필요), 삭제는 26단계에서 뽑은 `useMutation`을 처음부터 쓴다.
+
+**배운 개념:**
+
+**1) 같은 구조가 두 번이면 아직 뽑지 않는다**
+`FeedOwnerActions`는 `ChallengeOwnerActions`와 비교 대상(`user_id`/`author_id`), 삭제 경로, 수정 링크만 다르다. 두 곳일 때는 각자 읽히는 편이 낫고, 세 번째가 생기면 뽑는다 — `useMutation`을 세 곳 반복 후 뽑은 것과 같은 기준.
+
+**2) 훅이 골격을 맡으니 핸들러는 "성공 후 동작"만 남는다**
+```ts
+const result = await mutate<void>(`/feed/${feedId}`, { method: "DELETE" });
+if (!result.ok) return;
+const backTo = challengeId === null ? `/challenges` : `/challenges/${challengeId}?tab=feed`;
+navigate(backTo, { replace: true });
+```
+`submitting`/`error`/`try·catch·finally`를 한 줄도 쓰지 않았고, 26단계에서 고친 "실패 후 버튼 재활성화"도 따라왔다.
+
+**3) `null`은 템플릿 리터럴에서 조용히 `"null"`이 된다**
+챌린지가 삭제된 피드는 `challenge_id`가 `null`이다. `` `/challenges/${challengeId}` ``는 타입 오류 없이 `/challenges/null`을 만든다(TypeScript는 `${number | null}`을 막지 않는다). 25단계의 `null === null`이 `true`가 되는 것과 같은 계열 — `null`이 다른 값으로 바뀌어 통과한다. URL에 넣기 전에 직접 분기한다. 상세 화면의 "← 피드 목록" 링크(`backTo`)도 같은 규칙.
+
+**4) 삭제 후 이동은 `replace` — 뒤로가기는 "들어오기 전 화면"으로**
+피드 탭 → 상세 → 삭제 순서면, 삭제 후 뒤로가기는 처음의 피드 탭으로 간다(삭제된 `/feeds/:id`는 교체돼 히스토리에 없다).
+
+**실습 내용:** `handleDelete`를 `TODO(human)`으로 작성. 백엔드가 꺼져 있어 API를 전부 모킹해 검증 — 피드 탭 제목 → 상세 진입, 본문·사진 장수, 내 글만 수정·삭제 표시(남의 글·`user_id=null` 숨김), 수정·뒤로 링크 주소, 없는 피드 안내, 삭제 취소 시 요청 없음, 삭제 중 "처리 중...", 403 시 에러·모달 유지·버튼 재활성화·다시 열면 초기화, 성공 시 피드 탭으로 `replace` 이동과 뒤로가기, `challenge_id=null`이면 `/challenges`로 이동(총 16개 통과).
+
+이어서 `challenge-api`를 띄워 **모킹한 응답을 실제 응답과 대조**했다.
+| 확인 항목 | 실제 응답 | 모킹과 차이 |
+|---|---|---|
+| 없는 피드 `GET /feed/:id` | `200 { success: true, data: null }` (삭제된 피드도 동일) | 없음 |
+| `DELETE /feed/:id` 본인 | `200 { success: true }` — `data` 필드 자체가 없다 | 모킹은 `data`를 넣었지만 `mutate<void>`는 `data`를 쓰지 않아 영향 없음 |
+| 남의 피드 삭제 | `403 "작성자만 접근 가능합니다."` | 문구만 다름 |
+| 이미 지운 피드 다시 삭제 | `404 "피드가 없습니다."` | (모킹 안 함) |
+| 챌린지 삭제 후 그 피드 | `challenge_id: null`로 남는다 | **`/challenges/null` 버그가 실제로 일어나는 경로임을 확인** |
+| 참가 중복 / 포기 상태에서 기록 | `409 "이미 참가중입니다."` / `409 "챌린지 포기 상태입니다."` | 문구만 다름 |
+
+실제 서버로 브라우저 시나리오도 재실행 — 27단계(내 피드 표시·남의 피드 숨김·없는 피드·삭제 후 목록에서 사라짐과 서버 삭제·뒤로가기·챌린지가 삭제된 피드 삭제 시 `/challenges`) 8개, 26단계 성공 경로(참가 → 3+2 기록으로 완료 → 포기 → 챌린지 삭제) 4개 모두 통과. 에러 문구는 `apiFetch`가 서버 `message`를 그대로 쓰므로 모킹 문구와 달라도 화면 동작은 같다.
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** `` navigate(`/challenges/${challengeId}?tab=feed`, { replace: true }) `` — 빌드·타입은 통과하지만 챌린지가 삭제된 피드면 `/challenges/null`로 이동해 삭제가 실패한 것처럼 보인다.
+- **2차 수정:** `challengeId === null ? "/challenges" : ...`로 분기해 통과.
+
+**남겨둔 것:** ① `FeedFormPage`도 수정 후 `` `/challenges/${challengeId}?tab=feed` ``로 이동하는데 `challengeId`가 `null`/`undefined`일 수 있다(같은 버그). 또 수정 후에는 이제 피드 상세(`/feeds/:id`)로 돌아가는 편이 자연스럽다. ② 피드 이미지 표시는 여전히 장수만(보완 과제). ③ `FeedOwnerActions`와 `ChallengeOwnerActions`의 중복 — 세 번째가 생기면 추출.

@@ -35,7 +35,9 @@ function ChallengeFeedTab({ challengeId }: Props) {
       <ul style={{ listStyle: "none", padding: 0 }}>
         {items.map((feed) => (
           <li key={feed.id}>
-            <strong>{feed.title}</strong>
+            <Link to={`/feeds/${feed.id}`}>
+              <strong>{feed.title}</strong>
+            </Link>
             <p>{feed.content}</p>
             {feed.images && feed.images.length > 0 && (
               <small>사진 {feed.images.length}장</small>
