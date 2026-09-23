@@ -1745,4 +1745,6 @@ navigate(backTo, { replace: true });
 - **1차 시도:** `` navigate(`/challenges/${challengeId}?tab=feed`, { replace: true }) `` — 빌드·타입은 통과하지만 챌린지가 삭제된 피드면 `/challenges/null`로 이동해 삭제가 실패한 것처럼 보인다.
 - **2차 수정:** `challengeId === null ? "/challenges" : ...`로 분기해 통과.
 
-**남겨둔 것:** ① `FeedFormPage`도 수정 후 `` `/challenges/${challengeId}?tab=feed` ``로 이동하는데 `challengeId`가 `null`/`undefined`일 수 있다(같은 버그). 또 수정 후에는 이제 피드 상세(`/feeds/:id`)로 돌아가는 편이 자연스럽다. ② 피드 이미지 표시는 여전히 장수만(보완 과제). ③ `FeedOwnerActions`와 `ChallengeOwnerActions`의 중복 — 세 번째가 생기면 추출.
+**남겨둔 것:** ① ~~`FeedFormPage`의 같은 버그~~ → 아래 "보완"에서 해결. ② 피드 이미지 표시는 여전히 장수만(보완 과제). ③ `FeedOwnerActions`와 `ChallengeOwnerActions`의 중복 — 세 번째가 생기면 추출.
+
+**보완 — `FeedFormPage`의 `/challenges/null` 이동:** 피드 저장 후 `` `/challenges/${challengeId}?tab=feed` ``로 이동하는데, 챌린지가 삭제된 피드를 수정하면 `challengeId`가 `null`이라 같은 버그가 난다. `null`을 분기하는 대신 **경로에서 `challenge_id`를 아예 빼는** 쪽을 택했다 — 챌린지 폼(`ChallengeFormPage`)과 같은 규칙으로, 저장하면 그 글의 상세(`/feeds/${isEdit ? feedId : response.id}`)로, 취소하면 수정은 피드 상세·작성은 URL의 챌린지 id(`/challenges/:id/feeds/new`의 `:id`, 항상 있음)로 간다. `null`일 수 있는 값을 "잘 다루는" 것보다 "쓰지 않아도 되게" 바꾸는 편이 더 확실하다. 실제 백엔드로 5개 확인 — 작성 저장 → 새 피드 상세·뒤로가기 시 피드 탭, 챌린지가 삭제된 피드 수정 저장 → `/feeds/:id`에 수정 내용 표시, 취소 링크 2종. (테스트 중 백엔드가 **피드 제목을 전체에서 중복 없이** 받는다는 것도 발견 — 같은 제목이면 `409 "중복된 제목입니다."`, 폼은 서버 메시지를 그대로 표시한다.) 수정 후 `replace`로 상세에 가면 히스토리에 상세가 두 번 쌓여 뒤로가기를 한 번 더 눌러야 하는 점은 챌린지 폼과 동일하게 남겨 둔다.

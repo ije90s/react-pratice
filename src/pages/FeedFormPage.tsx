@@ -14,7 +14,6 @@ function FeedFormPage() {
   const { data: feed, loading, error } = useFetch<Feed | null>(
     isEdit ? `/feed/${feedId}` : null,
   );
-  const challengeId = isEdit ? feed?.challenge_id : id; // 저장 후·취소 시 돌아갈 챌린지
 
   async function handleSubmit(input: FeedInput) {
     const path = isEdit ? `/feed/${feedId}` : `/feed`;
@@ -29,8 +28,9 @@ function FeedFormPage() {
     input.images.forEach((image) => {
       form.append("images", image);
     });
-    await apiFetch<Feed>(path, { method, token, body: form});
-    navigate(`/challenges/${challengeId}?tab=feed`, {replace: true});
+    const response = await apiFetch<Feed>(path, { method, token, body: form});
+    // 챌린지 폼과 같은 규칙: 저장한 글의 상세로 간다. 피드의 challenge_id는 챌린지가 삭제되면 null이라 경로에 쓰지 않는다.
+    navigate(`/feeds/${isEdit ? feedId : response.id}`, {replace: true});
   }
 
   if (isEdit && loading) return <p>불러오는 중...</p>;
@@ -39,7 +39,7 @@ function FeedFormPage() {
 
   return (
     <div>
-      <Link to={challengeId ? `/challenges/${challengeId}?tab=feed` : "/challenges"}>← 취소</Link>
+      <Link to={isEdit ? `/feeds/${feedId}` : `/challenges/${id}?tab=feed`}>← 취소</Link>
       <h1>{isEdit ? "피드 수정" : "피드 작성"}</h1>
       <FeedForm
         key={feedId ?? "new"}
