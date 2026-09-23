@@ -1662,3 +1662,39 @@ const isMine = me !== null && authorId !== null && me.id === authorId;
 - **2차 수정:** `me !== null && authorId !== null && me.id === authorId`로 "값이 있을 때만 비교"하게 정리. 시나리오 재실행에서 회귀 없음.
 
 **남겨둔 것:** ① 토큰이 생긴 직후 한 번의 렌더 동안 `useFetch`의 `loading`이 `false`이면서 이전 `data`가 남을 수 있다(`loading` 초기값이 마운트 때만 정해진다). 그 시점에 `me`를 소비하는 화면이 마운트돼 있지 않아 실제로는 드러나지 않았고, 근본 해결은 `useFetch`가 `path` 변경 시 `data`를 비우는 것(단 `MyParticipationSection`의 재시도 회귀를 다시 확인해야 한다). ② `submitting`/`error`/`try·catch·finally` 골격이 `ParticipationActions`, `RecordAddModal`, `ChallengeOwnerActions` 세 곳에서 반복된다 — `useMutation` 훅으로 추출할 시점. ③ 삭제 후 이동하는 사이 컴포넌트가 사라져도 `finally`의 `setSubmitting`이 실행된다(취소 처리 안 함). ④ 피드 상세·수정·삭제의 "내 글" 판단은 피드 응답에 작성자 id가 있는지 확인이 필요하다. 다음은 `/feeds/:feedId` 상세·삭제(Phase 5)와 `useMutation` 추출.
+
+---
+
+## 26단계: `useMutation` 훅 추출 — 버튼·폼 요청의 공통 골격 한 곳으로
+
+**실습 파일:** `src/hooks/useMutation.ts`(신규), `src/components/ParticipationActions.tsx`, `src/components/RecordAddModal.tsx`, `src/components/ChallengeOwnerActions.tsx`(훅 사용으로 교체).
+
+**배경:** `submitting`/`error`/`try·catch·finally` 골격이 참가·포기, 기록 추가, 챌린지 삭제 세 곳에서 반복됐다. 다음 작업인 피드 삭제에서 네 번째로 복사하기 전에 추출했다. `useFetch`(렌더링 때 자동 조회)와 달리 호출한 쪽이 `mutate()`를 부를 때만 요청한다.
+
+**배운 개념:**
+
+**1) 추출할 때는 "같은 부분"보다 "다른 부분"을 먼저 찾는다**
+세 곳은 로딩·에러 처리가 같고 **성공 후 동작만** 다르다(`setStatus` / `onRecorded` + `close()` / `navigate(..., { replace: true })`). 같은 부분은 훅으로, 다른 부분은 호출한 쪽에 남긴다. 세 컴포넌트에서 65줄이 34줄로 줄었다.
+
+**2) 실패를 알리는 방법 — 결과 객체 `{ ok: true, data } | { ok: false }`**
+```ts
+const result = await mutate<Participation>(path, { method: "PATCH", body });
+if (!result.ok) return; // 에러 메시지는 훅의 error에 이미 들어 있다
+onRecorded(result.data);
+close();
+```
+선택지는 ① 결과 객체, ② 실패 시 `undefined` 반환, ③ 에러 다시 던지기였다. ②는 `DELETE`처럼 성공 응답 자체가 `undefined`(204)일 수 있어서 성공과 실패를 구분하지 못하고, ③은 호출한 쪽마다 `try/catch`가 다시 필요해 추출한 의미가 줄어든다. `ok`로 구분되는 유니온 타입이라 `result.ok`를 확인한 뒤에만 `result.data`에 접근할 수 있다(타입이 강제).
+
+**3) 요청 전 검증은 `mutate` 바깥에서 한다**
+`RecordAddModal`의 정수 검사는 `mutate` 호출 전에 하고, 실패하면 훅이 내보낸 `setError`로 메시지만 넣는다. 전에는 `try` 안에서 `return`해서 `finally`가 `submitting`을 되돌려 줘야 했는데, 이제 잘못된 입력은 `submitting`을 켜지도 않는다. `setError`는 dialog 닫힘 시 초기화에도 쓴다.
+
+**4) "켠 상태를 끄는 코드"는 `finally`에 둔다**
+성공·실패 어느 쪽으로 끝나도 `setSubmitting(false)`가 실행돼야 한다. `finally`에는 `return`을 두지 않는다 — `finally`의 `return`은 `try`/`catch`의 반환값을 덮어쓴다.
+
+**실습 내용:** `mutate` 본문을 `TODO(human)`으로 작성. 백엔드가 꺼져 있어 API를 전부 Playwright로 모킹해 검증 — 세 컴포넌트 각각 요청 중 "처리 중..."·비활성화, 실패(409/403) 시 에러 표시 후 **버튼 재활성화와 재시도 성공**, 기록 추가의 잘못된 입력 요청 없음·본문 `{score:3}`·다시 열 때 초기화·목표 달성 시 완료 전환, 삭제 403 후 모달 유지·성공 시 `replace` 이동, 포기(`GET giveup`) 경로(총 18개 통과).
+
+**흔한 실수 (직접 겪음) — 2번의 시도:**
+- **1차 시도:** `setSubmitting(false)`를 `try` 안 `return` 직전에만 두었다. 빌드·린트·타입 모두 통과했지만, 실패하면 `catch`로 빠져 `submitting`이 `true`로 남는다 — 409 한 번이면 참가 버튼·기록 추가·삭제 버튼이 "처리 중..."으로 영원히 막힌다. 훅으로 뽑았기 때문에 이 버그가 세 컴포넌트에 한꺼번에 퍼진다.
+- **2차 수정:** `finally { setSubmitting(false); }`로 옮겨 통과. 테스트에 "실패 후 버튼 재활성화·재시도 성공" 항목을 넣어 이 경로를 확인했다.
+
+**남겨둔 것:** ① 컴포넌트가 사라진 뒤 도착한 응답의 `setState`는 여전히 막지 않는다(삭제 후 이동할 때 `finally`의 `setSubmitting`) — `useFetch`의 `cancelled` 같은 가드는 `mutate`가 이벤트 핸들러에서 불려서 그대로 쓸 수 없다. ② `mutate` 함수는 렌더링마다 새로 만들어진다 — 의존성 배열에 넣을 일이 생기면 `useCallback`이 필요하다(`AuthProvider`의 `logout`과 같은 주제). 다음은 `/feeds/:feedId` 상세·삭제 — 이 훅을 처음부터 쓰는 첫 화면.

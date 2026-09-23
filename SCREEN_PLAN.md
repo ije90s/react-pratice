@@ -94,4 +94,4 @@
 - [ ] `AuthProvider`의 `logout`을 `useCallback`으로 감싸고 `useEffect` 의존성을 `[logout]`으로 정리 — 지금은 `[token]`이라 동작은 맞지만 `react-hooks/exhaustive-deps` 경고가 남는다(`logout`이 다른 값을 참조하게 바뀌면 옛 값을 쓰는 stale closure 위험). `useCallback`을 배운 뒤 처리
 - [x] 상세 화면에 "수정" 버튼 — 내 글일 때만 노출(챌린지 완료, 피드 상세는 Phase 5 `/feeds/:feedId`에서). `GET /user/me`로 내 `id`를 받아 `challenge.author_id`와 비교해야 해서 Phase 5(삭제 버튼)와 함께 처리. 지금은 `/challenges/:id/edit`를 주소창으로만 접근 가능(남의 글은 서버가 403)
 - [ ] 피드 상세 화면에서 이미지 표시·이미지 삭제 — 서버가 "새 이미지를 보내면 전체 교체, 안 보내면 유지"만 지원해서 기존 이미지만 지우는 UI는 불가(백엔드 수정 필요). 피드 목록은 지금 "사진 N장" 텍스트만 표시
-- [ ] `useMutation` 훅 추출 — `submitting`/`error`/`try·catch·finally` 골격이 `ParticipationActions`, `RecordAddModal`, `ChallengeOwnerActions` 세 곳에서 반복된다. 피드 삭제(위 Phase 5)에서 네 번째로 쓰기 전에 뽑는다
+- [x] `useMutation` 훅 추출 — `submitting`/`error`/`try·catch·finally` 골격이 `ParticipationActions`, `RecordAddModal`, `ChallengeOwnerActions` 세 곳에서 반복된다. 피드 삭제(위 Phase 5)에서 네 번째로 쓰기 전에 뽑는다. 추출 완료(결과 객체 `{ ok, data }` 반환), 세 곳 교체

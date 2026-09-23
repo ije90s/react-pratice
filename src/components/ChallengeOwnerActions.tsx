@@ -1,8 +1,7 @@
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { apiFetch, ApiError } from "../api/client";
-import { useAuth } from "../context/AuthContext";
 import { useMe } from "../context/UserContext";
+import useMutation from "../hooks/useMutation";
 
 interface Props {
   challengeId: number;
@@ -11,26 +10,17 @@ interface Props {
 
 // 내 글일 때만 "수정/삭제"를 보여준다. 서버도 남의 글이면 403을 주지만, 눌러볼 수 있는 버튼 자체를 숨기는 것이 목적이다.
 function ChallengeOwnerActions({ challengeId, authorId }: Props) {
-  const { token } = useAuth();
   const { me } = useMe();
   const navigate = useNavigate();
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const { mutate, submitting, error, setError } = useMutation();
   const isMine = me !== null && authorId !== null && me.id === authorId;
 
   async function handleDelete() {
-    try {
-      setSubmitting(true);
-      setError("");
-      await apiFetch<void>(`/challenge/${challengeId}`, { method: "DELETE", token });
-      // 삭제된 글의 상세로 뒤로가기 하면 "존재하지 않는 챌린지"가 보이므로 히스토리에 남기지 않는다.
-      navigate("/challenges", { replace: true });
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "알 수 없는 에러가 발생했습니다.");
-    } finally {
-      setSubmitting(false);
-    }
+    const result = await mutate<void>(`/challenge/${challengeId}`, { method: "DELETE" });
+    if (!result.ok) return;
+    // 삭제된 글의 상세로 뒤로가기 하면 "존재하지 않는 챌린지"가 보이므로 히스토리에 남기지 않는다.
+    navigate("/challenges", { replace: true });
   }
 
   if (!isMine) return null;

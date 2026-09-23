@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { apiFetch, ApiError } from "../api/client";
-import { useAuth } from "../context/AuthContext";
+import useMutation from "../hooks/useMutation";
 import type { Participation } from "../types/participation";
 import RecordAddModal from "./RecordAddModal";
 
@@ -11,31 +10,21 @@ interface Props {
 }
 
 function ParticipationActions({ challengeId, type, initialStatus }: Props) {
-  const { token } = useAuth();
   // 서버 값은 처음 한 번만 받고, 이후에는 요청 응답의 status로 직접 갱신한다(재조회 없음).
   const [status, setStatus] = useState<number | null>(initialStatus);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const { mutate, submitting, error } = useMutation();
 
   async function handleClick() {
-    try{
-      setSubmitting(true);
-      setError("");
-      let path = '', method = '';
-      if (status === null){
-        path = `/participation/challenge/${challengeId}`;
-        method = "POST";
-      }else{
-        path = `/participation/challenge/${challengeId}/giveup`;
-        method = "GET";
-      }
-      const response = await apiFetch<Participation>(path, { method, token});
-      setStatus(response.status);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "알 수 없는 에러가 발생했습니다.");
-    } finally {
-      setSubmitting(false);
+    let path = '', method = '';
+    if (status === null){
+      path = `/participation/challenge/${challengeId}`;
+      method = "POST";
+    }else{
+      path = `/participation/challenge/${challengeId}/giveup`;
+      method = "GET";
     }
+    const result = await mutate<Participation>(path, { method });
+    if (result.ok) setStatus(result.data.status);
   }
 
   // 완료(1)면 더 할 수 있는 액션이 없다 — giveup도 서버가 409로 막는다.

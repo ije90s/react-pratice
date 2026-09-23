@@ -1,6 +1,5 @@
 import { useRef, useState, type FormEvent } from "react";
-import { apiFetch, ApiError } from "../api/client";
-import { useAuth } from "../context/AuthContext";
+import useMutation from "../hooks/useMutation";
 import type { Participation } from "../types/participation";
 
 interface Props {
@@ -10,11 +9,9 @@ interface Props {
 }
 
 function RecordAddModal({ challengeId, type, onRecorded }: Props) {
-  const { token } = useAuth();
   const dialogRef = useRef<HTMLDialogElement>(null); // 네이티브 <dialog> DOM 요소를 직접 가리킨다
   const [value, setValue] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const { mutate, submitting, error, setError } = useMutation();
 
   const unit = type === 0 ? "점" : "회";
 
@@ -34,28 +31,21 @@ function RecordAddModal({ challengeId, type, onRecorded }: Props) {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    try{
-      setSubmitting(true);
-      setError("");
-      const n = Number(value);
-      if(!Number.isInteger(n) || n < 1){
-        setError("입력값이 정확하지 않습니다.");
-        return;
-      }
-      let body = {};
-      if(type === 0){
-        body = { score: n };
-      }else{
-        body = { challenge_count: n };
-      }
-      const response = await apiFetch<Participation>(`/participation/challenge/${challengeId}`, { method: "PATCH", token, body });
-      onRecorded(response);
-      close();
-    } catch(err){
-      setError(err instanceof ApiError ? err.message : "알 수 없는 에러가 발생했습니다.");
-    } finally {
-      setSubmitting(false);
+    const n = Number(value);
+    if(!Number.isInteger(n) || n < 1){
+      setError("입력값이 정확하지 않습니다.");
+      return;
     }
+    let body = {};
+    if(type === 0){
+      body = { score: n };
+    }else{
+      body = { challenge_count: n };
+    }
+    const result = await mutate<Participation>(`/participation/challenge/${challengeId}`, { method: "PATCH", body });
+    if (!result.ok) return; // 에러 메시지는 훅이 이미 넣었다 — 모달은 열어 둔 채로 보여준다
+    onRecorded(result.data);
+    close();
   }
 
   return (
